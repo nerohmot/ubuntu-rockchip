@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - OMG
-      
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -22,7 +22,7 @@ jobs:
       - name: Build OMG Image
         run: |
           # This command looks for config/boards/omg.sh
-          sudo ./build.sh --board=omg --server-only
+          sudo ./build.sh --board=omg
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
