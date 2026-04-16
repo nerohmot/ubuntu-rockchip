@@ -1,0 +1,28 @@
+name: OMG Image Builder
+on:
+  workflow_dispatch: # This is the magic line that gives you the "Run" button
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc-aarch64-linux-gnu bison gawk \
+          qemu-user-static debootstrap flex libssl-dev bc rsync kmod cpio xz-utils \
+          fakeroot parted udev dosfstools device-tree-compiler
+
+      - name: Build OMG Image
+        run: |
+          # This command looks for config/boards/omg.sh
+          sudo ./build.sh --board=omg --server-only
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OMG-Installer-Image
+          path: build/*.img.xz
