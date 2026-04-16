@@ -40,7 +40,17 @@ jobs:
             libelf-dev \
             pkg-config
 
-
+      - name: Cache Build Directory
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/
+            .ccache
+          # The 'key' changes if your board config or scripts change
+          key: ${{ runner.os }}-omg-build-${{ hashFiles('config/boards/omg.sh', 'scripts/omg-setup.sh') }}
+          # The 'restore-keys' allows using the most recent cache even if the key doesn't match perfectly
+          restore-keys: |
+            ${{ runner.os }}-omg-build-
 
       - name: Build OMG Image
         run: |
