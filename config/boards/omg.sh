@@ -5,7 +5,9 @@ BOARD_SINGLE="omg"
 SOA_ARCH="arm64"
 SOC="rk3588s"
 DTB="rockchip/rk3588s-rock-5a.dtb"
+
 U_BOOT_TARGET="radxa-cm5-rk3588"
 U_BOOT_CONFIG="rock-5a-rk3588_defconfig"
-# Hidden boot for a clean appliance feel
+U_BOOT_PACKAGE="u-boot-radxa-cm5-rk3588" # This is the magic fix
+
 KERNEL_CMDLINE="quiet splash vt.global_cursor_default=0"
