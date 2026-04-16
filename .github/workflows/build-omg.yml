@@ -22,7 +22,7 @@ jobs:
       - name: Build OMG Image
         run: |
           # This command looks for config/boards/omg.sh
-          sudo ./build.sh --board=omg
+          sudo ./build.sh --board=omg --suite=noble --flavor=server
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
