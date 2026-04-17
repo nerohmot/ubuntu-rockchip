@@ -66,6 +66,18 @@ jobs:
           # 3. Resume the build to finish the image
           sudo ./build.sh --board=omg --suite=noble --flavor=server
 
+      - name: Debug Build Directory on Failure
+        if: failure() # 👈 This only runs if the step above fails
+        run: |
+          echo "❌ Build failed. Displaying directory structure for troubleshooting:"
+          echo "---------------------------------------------------------------"
+          # Install tree if not present, then show 'build' and 'config' structures
+          sudo apt-get install -y tree > /dev/null
+          tree -L 3 build/
+          echo "---------------------------------------------------------------"
+          echo "Checking Board Configs:"
+          ls -R config/boards/
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
