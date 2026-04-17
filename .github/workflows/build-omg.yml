@@ -31,18 +31,30 @@ jobs:
 
       - name: Build Core Components
         run: |
-          # 1. 💉 Inject SUITE and FLAVOR so build-kernel.sh doesn't crash
+          # 1. Standard Environment
           export SUITE="noble"
           export FLAVOR="server"
-          
-          # 2. Build Kernel
-          sudo -E ./scripts/build-kernel.sh rock-5a
-          
-          # 3. Build U-Boot
           export PKG="u-boot-radxa-rk3588"
           export TGT="rock-5a-rk3588s"
           export CFG="rock-5a-rk3588_defconfig"
-          sudo -E UBOOT_PACKAGE="$PKG" UBOOT_TARGET="$TGT" UBOOT_RULES_TARGET="$TGT" UBOOT_CONFIG="$CFG" ./scripts/build-u-boot.sh rock-5a
+          
+          # 2. 🔥 THE PERMANENT FIX: 
+          # We tell the 'rules' file to build the SPI target as an 'extra'
+          # This ensures 'rkspi_loader.img' is actually compiled and exists
+          export EXTRA_TGT="rock-5a-spi-rk3588s"
+
+          # 3. Build Kernel
+          sudo -E ./scripts/build-kernel.sh rock-5a
+          
+          # 4. Build U-Boot (Properly this time)
+          # We pass UBOOT_RULES_TARGET_EXTRA so the Makefile builds BOTH targets
+          sudo -E \
+            UBOOT_PACKAGE="$PKG" \
+            UBOOT_TARGET="$TGT" \
+            UBOOT_RULES_TARGET="$TGT" \
+            UBOOT_RULES_TARGET_EXTRA="$EXTRA_TGT" \
+            UBOOT_CONFIG="$CFG" \
+            ./scripts/build-u-boot.sh rock-5a
 
   # --- JOB 2: THE OMG IMAGE (Assembly) ---
   build-omg:
