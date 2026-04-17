@@ -76,30 +76,38 @@ jobs:
 
       - name: Build OMG Image
         run: |
-          # 1. 🔍 THE SPY STEP (Non-crashing version)
-          echo "🔎 Listing all possible U-Boot targets in the repo..."
-          find packages/u-boot-radxa-rk3588/ -name "vars.*" || echo "Vars not found"
+          # 1. 🔍 THE DISCOVERY STEP: Print the actual Makefile logic
+          echo "🔎 PRINTING DEBIAN RULES FOR U-BOOT..."
+          RULES_FILE="packages/u-boot-radxa-rk3588/debian/rules"
+          VARS_FILE="packages/u-boot-radxa-rk3588/debian/control.d/vars.rockchip"
           
-          # 2. Define the core strings
-          # 'radxa-cm5-rk3588' is the standard target for the NX5/CM5 silicon
+          if [ -f "$RULES_FILE" ]; then
+            echo "--- START OF $RULES_FILE ---"
+            cat "$RULES_FILE"
+            echo "--- END OF $RULES_FILE ---"
+          fi
+
+          if [ -f "$VARS_FILE" ]; then
+            echo "--- START OF $VARS_FILE ---"
+            cat "$VARS_FILE"
+            echo "--- END OF $VARS_FILE ---"
+          fi
+
+          # 2. Define our environment as before
           PKG="u-boot-radxa-rk3588"
-          TGT="radxa-cm5-rk3588" 
+          TGT="rock-5a-rk3588" 
           CFG="rock-5a-rk3588_defconfig"
 
-          # 3. 🔍 Debug: Print the full injection map (KEEPING THE ECHO)
+          # 3. 🔍 Debug: Print the variables (as requested!)
           echo "------------------------------------------------"
-          echo "💉 Preparing Quad-Injected Variables:"
+          echo "💉 Injecting Variables:"
           echo "UBOOT_PACKAGE:      '$PKG'"
-          echo "U_BOOT_PACKAGE:     '$PKG'"
           echo "UBOOT_TARGET:       '$TGT'"
-          echo "U_BOOT_TARGET:      '$TGT'"
           echo "UBOOT_RULES_TARGET: '$TGT'"
           echo "UBOOT_CONFIG:       '$CFG'"
-          echo "U_BOOT_CONFIG:      '$CFG'"
           echo "------------------------------------------------"
 
-          # 4. 🔥 THE QUAD-INJECTION
-          echo "🛠️ Compiling U-Boot..."
+          # 4. 🔥 THE INJECTION
           sudo \
             UBOOT_PACKAGE="$PKG"        U_BOOT_PACKAGE="$PKG" \
             UBOOT_TARGET="$TGT"         U_BOOT_TARGET="$TGT" \
@@ -108,26 +116,22 @@ jobs:
             ./scripts/build-u-boot.sh rock-5a
           
           # 5. Create the 'omg' alias link
-          echo "🔗 Linking Radxa U-Boot to OMG..."
-          cd build
-          ln -sf u-boot-*.deb u-boot-omg_99.99_arm64.deb
-          ls -F
-          cd ..
+          cd build && ln -sf u-boot-*.deb u-boot-omg_99.99_arm64.deb && cd ..
 
           # 6. Final Image Build
           sudo -E ./build.sh --board=omg --suite=noble --flavor=server
 
-      - name: Debug Build Directory on Failure
-        if: failure() # 👈 This only runs if the step above fails
-        run: |
-          echo "❌ Build failed. Displaying directory structure for troubleshooting:"
-          echo "---------------------------------------------------------------"
-          # Install tree if not present, then show 'build' and 'config' structures
-          sudo apt-get install -y tree > /dev/null
-          tree -L 3 build/
-          echo "---------------------------------------------------------------"
-          echo "Checking Board Configs:"
-          ls -R config/boards/
+      # - name: Debug Build Directory on Failure
+      #   if: failure() # 👈 This only runs if the step above fails
+      #   run: |
+      #     echo "❌ Build failed. Displaying directory structure for troubleshooting:"
+      #     echo "---------------------------------------------------------------"
+      #     # Install tree if not present, then show 'build' and 'config' structures
+      #     sudo apt-get install -y tree > /dev/null
+      #     tree -L 3 build/
+      #     echo "---------------------------------------------------------------"
+      #     echo "Checking Board Configs:"
+      #     ls -R config/boards/
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
