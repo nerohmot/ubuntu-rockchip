@@ -76,11 +76,19 @@ jobs:
 
       - name: Build OMG Image
         run: |
+          # 🔍 Debug: Print the UBOOT variables from your config
+          echo "Checking OMG configuration variables..."
+          source config/boards/omg.sh
+          echo "------------------------------------------------"
+          echo "BOARD_SINGLE:  '${BOARD_SINGLE}'"
+          echo "UBOOT_PACKAGE: '${U_BOOT_PACKAGE}'"
+          echo "UBOOT_TARGET:  '${U_BOOT_TARGET}'"
+          echo "------------------------------------------------"
+
           # 1. Build the bootloader using the known Radxa target
           sudo ./scripts/build-u-boot.sh rock-5a
-
-          # 2. THE BRUTE FORCE LINK: Find the .deb we just made and link it to 'omg'
-          # This works regardless of whether it's named 'rock-5a' or 'radxa-rk3588'
+          
+          # 2. THE BRUTE FORCE LINK
           echo "🔗 Linking whatever U-Boot we found to 'omg'..."
           cd build
           UBOOT_FILE=$(ls u-boot-*.deb | head -n 1)
