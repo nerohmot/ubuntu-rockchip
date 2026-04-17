@@ -76,28 +76,32 @@ jobs:
 
       - name: Build OMG Image
         run: |
-          # 🔍 Debug: Print the UBOOT variables from your config
-          echo "Checking OMG configuration variables..."
-          source config/boards/omg.sh
+          # 1. 🔥 Set the Environment Variables
+          export U_BOOT_PACKAGE="u-boot-radxa-rk3588"
+          export U_BOOT_TARGET="radxa-rk3588"
+          export U_BOOT_CONFIG="rock-5a-rk3588_defconfig"
+
+          # 2. 🔍 Print/Verify for the Logs
           echo "------------------------------------------------"
-          echo "BOARD_SINGLE:  '${BOARD_SINGLE}'"
-          echo "UBOOT_PACKAGE: '${U_BOOT_PACKAGE}'"
-          echo "UBOOT_TARGET:  '${U_BOOT_TARGET}'"
+          echo "Checking Environment before Sudo:"
+          echo "UBOOT_PACKAGE: '$U_BOOT_PACKAGE'"
+          echo "UBOOT_TARGET:  '$U_BOOT_TARGET'"
+          echo "UBOOT_CONFIG:  '$U_BOOT_CONFIG'"
           echo "------------------------------------------------"
 
-          # 1. Build the bootloader using the known Radxa target
-          sudo ./scripts/build-u-boot.sh rock-5a
+          # 3. Build U-Boot using -E (Environment Preserve)
+          echo "🛠️ Compiling U-Boot..."
+          sudo -E ./scripts/build-u-boot.sh rock-5a
           
-          # 2. THE BRUTE FORCE LINK
-          echo "🔗 Linking whatever U-Boot we found to 'omg'..."
+          # 4. Create the 'omg' alias link
+          echo "🔗 Linking Radxa U-Boot to OMG..."
           cd build
-          UBOOT_FILE=$(ls u-boot-*.deb | head -n 1)
-          ln -sf "$UBOOT_FILE" "u-boot-omg_99.99_arm64.deb"
-          echo "Linked $UBOOT_FILE to u-boot-omg_99.99_arm64.deb"
+          ln -sf u-boot-rock-5a_*.deb u-boot-omg_99.99_arm64.deb
           cd ..
 
-          # 3. Final build attempt
-          sudo ./build.sh --board=omg --suite=noble --flavor=server
+          # 5. Final Image Build using -E
+          echo "🚀 Starting main image build..."
+          sudo -E ./build.sh --board=omg --suite=noble --flavor=server
 
       - name: Debug Build Directory on Failure
         if: failure() # 👈 This only runs if the step above fails
