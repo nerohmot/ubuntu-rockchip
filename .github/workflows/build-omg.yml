@@ -31,15 +31,20 @@ jobs:
 
       - name: Build Core Components
         run: |
-          sudo ./scripts/build-kernel.sh rock-5a
+          # 1. 💉 Inject SUITE and FLAVOR so build-kernel.sh doesn't crash
+          export SUITE="noble"
+          export FLAVOR="server"
           
+          # 2. Build Kernel
+          sudo -E ./scripts/build-kernel.sh rock-5a
+          
+          # 3. Build U-Boot
           export PKG="u-boot-radxa-rk3588"
           export TGT="rock-5a-rk3588s"
           export CFG="rock-5a-rk3588_defconfig"
-          
           sudo -E UBOOT_PACKAGE="$PKG" UBOOT_TARGET="$TGT" UBOOT_RULES_TARGET="$TGT" UBOOT_CONFIG="$CFG" ./scripts/build-u-boot.sh rock-5a
 
-  # --- JOB 2: THE OMG IMAGE (Custom Branding & Assembly) ---
+  # --- JOB 2: THE OMG IMAGE (Assembly) ---
   build-omg:
     needs: build-foundation
     runs-on: ubuntu-24.04
@@ -63,23 +68,25 @@ jobs:
 
       - name: Build OMG Image
         run: |
-          # 1. 🔍 MANDATORY LOGGING
+          # --- MANDATORY LOGGING ---
           export PKG="u-boot-radxa-rk3588"
           export TGT="rock-5a-rk3588s"
+          export SUITE="noble"
+          export FLAVOR="server"
           echo "------------------------------------------------"
           echo "💉 Finalizing Build with Full Environment Injection:"
           echo "UBOOT_PACKAGE: '$PKG'"
-          echo "UBOOT_TARGET:  '$TGT'"
+          echo "SUITE:         '$SUITE'"
           echo "------------------------------------------------"
 
-          # 2. Link the bootloader
+          # 1. Link the bootloader
           sudo ln -sf $(ls build/u-boot-rock-5a_*.deb | head -n 1) build/u-boot-omg_99.99_arm64.deb
           
-          # 3. 🔥 THE NVIDIA BYPASS
+          # 2. 🔥 THE NVIDIA BYPASS
           export APT_OPTIONS="--no-install-recommends --no-install-suggests"
 
-          # 4. Final Build
-          sudo -E UBOOT_PACKAGE="$PKG" ./build.sh --board=omg --suite=noble --flavor=server
+          # 3. Final Build
+          sudo -E UBOOT_PACKAGE="$PKG" ./build.sh --board=omg --suite=$SUITE --flavor=$FLAVOR
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
