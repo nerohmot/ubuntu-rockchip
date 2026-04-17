@@ -78,19 +78,23 @@ jobs:
         run: |
           # 1. Define the core strings
           PKG="u-boot-radxa-rk3588"
-          TGT="radxa-rk3588"
+          # 🔥 Trying 'rk3588' as the standard Makefile target
+          TGT="rk3588" 
           CFG="rock-5a-rk3588_defconfig"
 
-          # 2. 🔍 Debug: Print the full injection map
+          # 2. 🔍 Debug: Print the full injection map (KEEPING THE ECHO)
           echo "------------------------------------------------"
-          echo "💉 Preparing Triple-Injected Variables:"
-          echo "Package:      '$PKG' (UBOOT_PACKAGE)"
-          echo "Target:       '$TGT' (UBOOT_TARGET / UBOOT_RULES_TARGET)"
-          echo "Config:       '$CFG' (UBOOT_CONFIG)"
+          echo "💉 Preparing Quad-Injected Variables:"
+          echo "UBOOT_PACKAGE:      '$PKG'"
+          echo "U_BOOT_PACKAGE:     '$PKG'"
+          echo "UBOOT_TARGET:       '$TGT'"
+          echo "U_BOOT_TARGET:      '$TGT'"
+          echo "UBOOT_RULES_TARGET: '$TGT'"
+          echo "UBOOT_CONFIG:       '$CFG'"
+          echo "U_BOOT_CONFIG:      '$CFG'"
           echo "------------------------------------------------"
 
-          # 3. 🔥 THE TRIPLE-INJECTION
-          # We provide every possible variation to satisfy the script and the debian/rules Makefile
+          # 3. 🔥 THE QUAD-INJECTION
           echo "🛠️ Compiling U-Boot..."
           sudo \
             UBOOT_PACKAGE="$PKG"        U_BOOT_PACKAGE="$PKG" \
@@ -102,19 +106,19 @@ jobs:
           # 4. Create the 'omg' alias link
           echo "🔗 Linking Radxa U-Boot to OMG..."
           cd build
-          # -sf ensures we overwrite and don't fail if a link already exists
-          ln -sf u-boot-rock-5a_*.deb u-boot-omg_99.99_arm64.deb
+          # Using a wildcard to catch whatever .deb was produced
+          ln -sf u-boot-*.deb u-boot-omg_99.99_arm64.deb
           echo "Current build directory contents:"
           ls -F
           cd ..
 
-          # 5. Final Image Build (Using the same triple-injection)
+          # 5. Final Image Build (Using the same injection)
           echo "🚀 Starting main image build..."
           sudo \
             UBOOT_PACKAGE="$PKG"        U_BOOT_PACKAGE="$PKG" \
             UBOOT_TARGET="$TGT"         U_BOOT_TARGET="$TGT" \
             UBOOT_RULES_TARGET="$TGT" \
-            U_BOOT_CONFIG="$CFG"        U_BOOT_CONFIG="$CFG" \
+            UBOOT_CONFIG="$CFG"         U_BOOT_CONFIG="$CFG" \
             ./build.sh --board=omg --suite=noble --flavor=server
 
       - name: Debug Build Directory on Failure
