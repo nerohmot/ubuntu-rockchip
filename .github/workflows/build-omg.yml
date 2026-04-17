@@ -76,38 +76,26 @@ jobs:
 
       - name: Build OMG Image
         run: |
-          # 1. 🔍 THE DISCOVERY STEP: Print the actual Makefile logic
-          echo "🔎 PRINTING DEBIAN RULES FOR U-BOOT..."
-          RULES_FILE="packages/u-boot-radxa-rk3588/debian/rules"
-          VARS_FILE="packages/u-boot-radxa-rk3588/debian/control.d/vars.rockchip"
-          
-          if [ -f "$RULES_FILE" ]; then
-            echo "--- START OF $RULES_FILE ---"
-            cat "$RULES_FILE"
-            echo "--- END OF $RULES_FILE ---"
-          fi
-
-          if [ -f "$VARS_FILE" ]; then
-            echo "--- START OF $VARS_FILE ---"
-            cat "$VARS_FILE"
-            echo "--- END OF $VARS_FILE ---"
-          fi
-
-          # 2. Define our environment as before
+          # 1. Define the exact strings discovered from the Makefile
           PKG="u-boot-radxa-rk3588"
-          TGT="rock-5a-rk3588" 
+          # 🔥 This is the 'Magic String' found in debian/rules line 61
+          TGT="rock-5a-rk3588s" 
           CFG="rock-5a-rk3588_defconfig"
 
-          # 3. 🔍 Debug: Print the variables (as requested!)
+          # 2. 🔍 Debug: Print the full injection map (KEEPING THE ECHO)
           echo "------------------------------------------------"
-          echo "💉 Injecting Variables:"
+          echo "💉 Injecting Discovered Makefile Variables:"
           echo "UBOOT_PACKAGE:      '$PKG'"
+          echo "U_BOOT_PACKAGE:     '$PKG'"
           echo "UBOOT_TARGET:       '$TGT'"
+          echo "U_BOOT_TARGET:      '$TGT'"
           echo "UBOOT_RULES_TARGET: '$TGT'"
           echo "UBOOT_CONFIG:       '$CFG'"
+          echo "U_BOOT_CONFIG:      '$CFG'"
           echo "------------------------------------------------"
 
-          # 4. 🔥 THE INJECTION
+          # 3. 🔥 THE INJECTION
+          echo "🛠️ Compiling U-Boot for target: $TGT"
           sudo \
             UBOOT_PACKAGE="$PKG"        U_BOOT_PACKAGE="$PKG" \
             UBOOT_TARGET="$TGT"         U_BOOT_TARGET="$TGT" \
@@ -115,10 +103,16 @@ jobs:
             UBOOT_CONFIG="$CFG"         U_BOOT_CONFIG="$CFG" \
             ./scripts/build-u-boot.sh rock-5a
           
-          # 5. Create the 'omg' alias link
-          cd build && ln -sf u-boot-*.deb u-boot-omg_99.99_arm64.deb && cd ..
+          # 4. Create the 'omg' alias link
+          # The script might output u-boot-rock-5a-rk3588s_*.deb
+          echo "🔗 Linking Radxa U-Boot to OMG..."
+          cd build
+          ln -sf u-boot-*.deb u-boot-omg_99.99_arm64.deb
+          ls -F
+          cd ..
 
-          # 6. Final Image Build
+          # 5. Final Image Build
+          echo "🚀 Starting main image build..."
           sudo -E ./build.sh --board=omg --suite=noble --flavor=server
 
       # - name: Debug Build Directory on Failure
