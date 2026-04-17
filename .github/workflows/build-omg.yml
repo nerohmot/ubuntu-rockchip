@@ -21,7 +21,30 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential gcc-aarch64-linux-gnu bison gawk qemu-user-static debootstrap flex libssl-dev bc rsync kmod cpio xz-utils fakeroot parted udev dosfstools device-tree-compiler debhelper dh-python python3-dev libelf-dev pkg-config
+          sudo apt-get install -y \
+            bc \
+            bison \
+            build-essential \
+            cpio \
+            debhelper \
+            debootstrap \
+            device-tree-compiler \
+            dh-python \
+            dosfstools \
+            fakeroot \
+            flex \
+            gawk \
+            gcc-aarch64-linux-gnu \
+            kmod \
+            libelf-dev \
+            libssl-dev \
+            parted \
+            pkg-config \
+            python3-dev \
+            qemu-user-static \
+            rsync \
+            udev \
+            xz-utils
 
       - name: Cache Build Directory
         uses: actions/cache@v4
