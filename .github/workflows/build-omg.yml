@@ -1,148 +1,89 @@
 name: OMG Image Builder
 on:
-  workflow_dispatch: # This is the magic line that gives you the "Run" button
+  workflow_dispatch:
   push:
-    branches:
-      - OMG
+    branches: [ OMG ]
 
 jobs:
-  build:
+  # --- JOB 1: THE FOUNDATION (Kernel & Bootloader) ---
+  build-foundation:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install Build Dependencies
+      - name: 🛡️ Sanitizer & Permissions
+        run: |
+          find . -type f -exec sed -i 's/\r//g' {} +
+          chmod +x *.sh
+          if [ -d "scripts" ]; then chmod +x scripts/*.sh; fi
+
+      - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            gcc-aarch64-linux-gnu \
-            bison \
-            gawk \
-            qemu-user-static \
-            debootstrap \
-            flex \
-            libssl-dev \
-            bc \
-            rsync \
-            kmod \
-            cpio \
-            xz-utils \
-            fakeroot \
-            parted \
-            udev \
-            dosfstools \
-            device-tree-compiler \
-            debhelper \
-            dh-python \
-            python3-dev \
-            libelf-dev \
-            pkg-config
-
-      - name: 🧹 Global Line-Ending Sanitizer
-        run: |
-          echo "Stripping Windows CRLF from all files..."
-          find . -type f -exec sed -i 's/\r//g' {} +
-
-      - name: 🔑 Set Script Permissions
-        run: |
-          echo "Enabling execution for build scripts..."
-          # Explicitly target the main build script in the root
-          [ -f "./build.sh" ] && chmod +x ./build.sh
-          
-          # Target scripts in the sub-directory by path
-          if [ -d "scripts" ]; then
-            find scripts/ -type f -name "*.sh" -exec chmod +x {} +
-          fi
-
-          echo "Enabling execution for OMG CLI modules..."
-          # Target the overlay scripts by their full path from the root
-          if [ -d "overlay/usr/local/bin" ]; then
-            chmod +x overlay/usr/local/bin/*
-          fi
+          sudo apt-get install -y build-essential gcc-aarch64-linux-gnu bison gawk qemu-user-static debootstrap flex libssl-dev bc rsync kmod cpio xz-utils fakeroot parted udev dosfstools device-tree-compiler debhelper dh-python python3-dev libelf-dev pkg-config
 
       - name: Cache Build Directory
         uses: actions/cache@v4
         with:
-          path: |
-            build/
-            .ccache
-          # The 'key' changes if your board config or scripts change
-          key: ${{ runner.os }}-omg-build-${{ hashFiles('config/boards/omg.sh', 'scripts/omg-setup.sh') }}
-          # The 'restore-keys' allows using the most recent cache even if the key doesn't match perfectly
-          restore-keys: |
-            ${{ runner.os }}-omg-build-
+          path: build/
+          key: ${{ runner.os }}-omg-foundation-${{ hashFiles('config/boards/omg.sh') }}
 
-      - name: Build OMG Image
+      - name: Build Core Components
         run: |
-          # 1. Define the core strings
+          sudo ./scripts/build-kernel.sh rock-5a
+          
           export PKG="u-boot-radxa-rk3588"
           export TGT="rock-5a-rk3588s"
           export CFG="rock-5a-rk3588_defconfig"
+          
+          sudo -E UBOOT_PACKAGE="$PKG" UBOOT_TARGET="$TGT" UBOOT_RULES_TARGET="$TGT" UBOOT_CONFIG="$CFG" ./scripts/build-u-boot.sh rock-5a
 
-          # 2. 🔍 Debug: Print the full injection map (MANDATORY LOGGING)
+  # --- JOB 2: THE OMG IMAGE (Custom Branding & Assembly) ---
+  build-omg:
+    needs: build-foundation
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🛡️ Sanitizer & Permissions
+        run: |
+          find . -type f -exec sed -i 's/\r//g' {} +
+          chmod +x *.sh
+          if [ -d "scripts" ]; then chmod +x scripts/*.sh; fi
+          if [ -d "overlay/usr/local/bin" ]; then chmod +x overlay/usr/local/bin/*; fi
+          if [ -d "overlay/usr/local/lib/omg" ]; then chmod +x overlay/usr/local/lib/omg/*; fi
+
+      - name: Restore Foundation Cache
+        uses: actions/cache@v4
+        with:
+          path: build/
+          key: ${{ runner.os }}-omg-foundation-${{ hashFiles('config/boards/omg.sh') }}
+
+      - name: Build OMG Image
+        run: |
+          # 1. 🔍 MANDATORY LOGGING
+          export PKG="u-boot-radxa-rk3588"
+          export TGT="rock-5a-rk3588s"
           echo "------------------------------------------------"
           echo "💉 Finalizing Build with Full Environment Injection:"
-          echo "UBOOT_PACKAGE:      '$PKG'"
-          echo "U_BOOT_PACKAGE:     '$PKG'"
-          echo "UBOOT_TARGET:       '$TGT'"
-          echo "U_BOOT_TARGET:      '$TGT'"
-          echo "UBOOT_RULES_TARGET: '$TGT'"
-          echo "UBOOT_CONFIG:       '$CFG'"
-          echo "U_BOOT_CONFIG:      '$CFG'"
+          echo "UBOOT_PACKAGE: '$PKG'"
+          echo "UBOOT_TARGET:  '$TGT'"
           echo "------------------------------------------------"
 
-          # 3. 🔥 Stage 1: Compile (with bypass logic)
-          echo "🛠️ Starting U-Boot compilation (Stage 1)..."
-          sudo -E \
-            UBOOT_PACKAGE="$PKG"        U_BOOT_PACKAGE="$PKG" \
-            UBOOT_TARGET="$TGT"         U_BOOT_TARGET="$TGT" \
-            UBOOT_RULES_TARGET="$TGT" \
-            UBOOT_CONFIG="$CFG"         U_BOOT_CONFIG="$CFG" \
-            ./scripts/build-u-boot.sh rock-5a || true
-
-          # 4. 🔥 THE BYPASS: Create dummy SPI loader
-          echo "🛠️ Creating missing SPI loader dummy..."
-          sudo mkdir -p build/$PKG/debian/build/rock-5a-spi-rk3588s
-          sudo touch build/$PKG/debian/build/rock-5a-spi-rk3588s/rkspi_loader.img
-
-          # 5. 🔥 Stage 2: Finalize the .deb package
-          echo "🛠️ Finalizing U-Boot packaging (Stage 2)..."
-          sudo -E \
-            UBOOT_PACKAGE="$PKG"        U_BOOT_PACKAGE="$PKG" \
-            UBOOT_TARGET="$TGT"         U_BOOT_TARGET="$TGT" \
-            UBOOT_RULES_TARGET="$TGT" \
-            UBOOT_CONFIG="$CFG"         U_BOOT_CONFIG="$CFG" \
-            ./scripts/build-u-boot.sh rock-5a
-
-          # 6. 🔗 THE FIX: Link Radxa U-Boot to OMG using SUDO
-          echo "🔗 Linking Radxa U-Boot to OMG..."
-          sudo ln -sf build/u-boot-rock-5a_*.deb build/u-boot-omg_99.99_arm64.deb
+          # 2. Link the bootloader
+          sudo ln -sf $(ls build/u-boot-rock-5a_*.deb | head -n 1) build/u-boot-omg_99.99_arm64.deb
           
-          # 7. Final Image Build
-          echo "🚀 Starting main image build..."
-          sudo -E \
-            UBOOT_PACKAGE="$PKG"        U_BOOT_PACKAGE="$PKG" \
-            UBOOT_TARGET="$TGT"         U_BOOT_TARGET="$TGT" \
-            UBOOT_RULES_TARGET="$TGT" \
-            UBOOT_CONFIG="$CFG"         U_BOOT_CONFIG="$CFG" \
-            ./build.sh --board=omg --suite=noble --flavor=server
+          # 3. 🔥 THE NVIDIA BYPASS
+          export APT_OPTIONS="--no-install-recommends --no-install-suggests"
 
-      # - name: Debug Build Directory on Failure
-      #   if: failure() # 👈 This only runs if the step above fails
-      #   run: |
-      #     echo "❌ Build failed. Displaying directory structure for troubleshooting:"
-      #     echo "---------------------------------------------------------------"
-      #     # Install tree if not present, then show 'build' and 'config' structures
-      #     sudo apt-get install -y tree > /dev/null
-      #     tree -L 3 build/
-      #     echo "---------------------------------------------------------------"
-      #     echo "Checking Board Configs:"
-      #     ls -R config/boards/
+          # 4. Final Build
+          sudo -E UBOOT_PACKAGE="$PKG" ./build.sh --board=omg --suite=noble --flavor=server
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: OMG-Installer-Image
           path: build/*.img.xz
