@@ -76,22 +76,23 @@ jobs:
 
       - name: Build OMG Image
         run: |
-          # 1. 🔥 Set the Environment Variables
-          export U_BOOT_PACKAGE="u-boot-radxa-rk3588"
-          export U_BOOT_TARGET="radxa-rk3588"
-          export U_BOOT_CONFIG="rock-5a-rk3588_defconfig"
+          # 1. Define Local Variables
+          U_PKG="u-boot-radxa-rk3588"
+          U_TGT="radxa-rk3588"
+          U_CFG="rock-5a-rk3588_defconfig"
 
-          # 2. 🔍 Print/Verify for the Logs
+          # 2. 🔍 Debug: Print exactly what we are about to inject
           echo "------------------------------------------------"
-          echo "Checking Environment before Sudo:"
-          echo "UBOOT_PACKAGE: '$U_BOOT_PACKAGE'"
-          echo "UBOOT_TARGET:  '$U_BOOT_TARGET'"
-          echo "UBOOT_CONFIG:  '$U_BOOT_CONFIG'"
+          echo "💉 Preparing Direct Variable Injection:"
+          echo "Targeting Package: '$U_PKG'"
+          echo "Targeting Target:  '$U_TGT'"
+          echo "Targeting Config:  '$U_CFG'"
           echo "------------------------------------------------"
 
-          # 3. Build U-Boot using -E (Environment Preserve)
+          # 3. 🔥 THE FORCE INJECTION
+          # We pass variables inline so sudo cannot strip them
           echo "🛠️ Compiling U-Boot..."
-          sudo -E ./scripts/build-u-boot.sh rock-5a
+          sudo U_BOOT_PACKAGE="$U_PKG" U_BOOT_TARGET="$U_TGT" U_BOOT_CONFIG="$U_CFG" ./scripts/build-u-boot.sh rock-5a
           
           # 4. Create the 'omg' alias link
           echo "🔗 Linking Radxa U-Boot to OMG..."
@@ -99,9 +100,9 @@ jobs:
           ln -sf u-boot-rock-5a_*.deb u-boot-omg_99.99_arm64.deb
           cd ..
 
-          # 5. Final Image Build using -E
+          # 5. Final Image Build using the same injection
           echo "🚀 Starting main image build..."
-          sudo -E ./build.sh --board=omg --suite=noble --flavor=server
+          sudo U_BOOT_PACKAGE="$U_PKG" U_BOOT_TARGET="$U_TGT" U_BOOT_CONFIG="$U_CFG" ./build.sh --board=omg --suite=noble --flavor=server
 
       - name: Debug Build Directory on Failure
         if: failure() # 👈 This only runs if the step above fails
