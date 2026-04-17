@@ -40,18 +40,6 @@ jobs:
             libelf-dev \
             pkg-config
 
-      - name: Cache Build Directory
-        uses: actions/cache@v4
-        with:
-          path: |
-            build/
-            .ccache
-          # The 'key' changes if your board config or scripts change
-          key: ${{ runner.os }}-omg-build-${{ hashFiles('config/boards/omg.sh', 'scripts/omg-setup.sh') }}
-          # The 'restore-keys' allows using the most recent cache even if the key doesn't match perfectly
-          restore-keys: |
-            ${{ runner.os }}-omg-build-
-
       - name: 🧹 Global Line-Ending Sanitizer
         run: |
           echo "Stripping Windows CRLF from all files..."
@@ -74,16 +62,28 @@ jobs:
             chmod +x overlay/usr/local/bin/*
           fi
 
+      - name: Cache Build Directory
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/
+            .ccache
+          # The 'key' changes if your board config or scripts change
+          key: ${{ runner.os }}-omg-build-${{ hashFiles('config/boards/omg.sh', 'scripts/omg-setup.sh') }}
+          # The 'restore-keys' allows using the most recent cache even if the key doesn't match perfectly
+          restore-keys: |
+            ${{ runner.os }}-omg-build-
+
       - name: Build OMG Image
         run: |
           # 1. Define the core strings
-          PKG="u-boot-radxa-rk3588"
-          TGT="rock-5a-rk3588s" 
-          CFG="rock-5a-rk3588_defconfig"
+          export PKG="u-boot-radxa-rk3588"
+          export TGT="rock-5a-rk3588s"
+          export CFG="rock-5a-rk3588_defconfig"
 
           # 2. 🔍 Debug: Print the full injection map (MANDATORY LOGGING)
           echo "------------------------------------------------"
-          echo "💉 Finalizing Build with Root-Level Linking:"
+          echo "💉 Finalizing Build with Full Environment Injection:"
           echo "UBOOT_PACKAGE:      '$PKG'"
           echo "U_BOOT_PACKAGE:     '$PKG'"
           echo "UBOOT_TARGET:       '$TGT'"
@@ -94,31 +94,40 @@ jobs:
           echo "------------------------------------------------"
 
           # 3. 🔥 Stage 1: Compile (with bypass logic)
-          sudo UBOOT_PACKAGE="$PKG" U_BOOT_PACKAGE="$PKG" \
-               UBOOT_TARGET="$TGT"  U_BOOT_TARGET="$TGT" \
-               UBOOT_RULES_TARGET="$TGT" \
-               UBOOT_CONFIG="$CFG"  U_BOOT_CONFIG="$CFG" \
-               ./scripts/build-u-boot.sh rock-5a || true
+          echo "🛠️ Starting U-Boot compilation (Stage 1)..."
+          sudo -E \
+            UBOOT_PACKAGE="$PKG"        U_BOOT_PACKAGE="$PKG" \
+            UBOOT_TARGET="$TGT"         U_BOOT_TARGET="$TGT" \
+            UBOOT_RULES_TARGET="$TGT" \
+            UBOOT_CONFIG="$CFG"         U_BOOT_CONFIG="$CFG" \
+            ./scripts/build-u-boot.sh rock-5a || true
 
           # 4. 🔥 THE BYPASS: Create dummy SPI loader
+          echo "🛠️ Creating missing SPI loader dummy..."
           sudo mkdir -p build/$PKG/debian/build/rock-5a-spi-rk3588s
           sudo touch build/$PKG/debian/build/rock-5a-spi-rk3588s/rkspi_loader.img
 
           # 5. 🔥 Stage 2: Finalize the .deb package
-          sudo UBOOT_PACKAGE="$PKG" U_BOOT_PACKAGE="$PKG" \
-               UBOOT_TARGET="$TGT"  U_BOOT_TARGET="$TGT" \
-               UBOOT_RULES_TARGET="$TGT" \
-               UBOOT_CONFIG="$CFG"  U_BOOT_CONFIG="$CFG" \
-               ./scripts/build-u-boot.sh rock-5a
+          echo "🛠️ Finalizing U-Boot packaging (Stage 2)..."
+          sudo -E \
+            UBOOT_PACKAGE="$PKG"        U_BOOT_PACKAGE="$PKG" \
+            UBOOT_TARGET="$TGT"         U_BOOT_TARGET="$TGT" \
+            UBOOT_RULES_TARGET="$TGT" \
+            UBOOT_CONFIG="$CFG"         U_BOOT_CONFIG="$CFG" \
+            ./scripts/build-u-boot.sh rock-5a
 
           # 6. 🔗 THE FIX: Link Radxa U-Boot to OMG using SUDO
           echo "🔗 Linking Radxa U-Boot to OMG..."
-          # We use sudo here to overcome the 'Permission denied' error
           sudo ln -sf build/u-boot-rock-5a_*.deb build/u-boot-omg_99.99_arm64.deb
           
           # 7. Final Image Build
           echo "🚀 Starting main image build..."
-          sudo -E ./build.sh --board=omg --suite=noble --flavor=server
+          sudo -E \
+            UBOOT_PACKAGE="$PKG"        U_BOOT_PACKAGE="$PKG" \
+            UBOOT_TARGET="$TGT"         U_BOOT_TARGET="$TGT" \
+            UBOOT_RULES_TARGET="$TGT" \
+            UBOOT_CONFIG="$CFG"         U_BOOT_CONFIG="$CFG" \
+            ./build.sh --board=omg --suite=noble --flavor=server
 
       # - name: Debug Build Directory on Failure
       #   if: failure() # 👈 This only runs if the step above fails
