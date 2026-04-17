@@ -1,0 +1,52 @@
+#!/bin/bash
+# Module: omg repair
+# Handles: Offline system healing and service restoration
+
+PKG_DIR="/opt/omg/pkg"
+
+show_help() {
+    echo "Usage: omg repair"
+    echo ""
+    echo "Description:"
+    echo "  Performs a 'Deep Heal' of the gateway using the local air-gapped cache."
+    echo "  This will force-reinstall all critical marine tools (Signal K, GPS, WiFi, etc.)"
+    echo "  without needing an internet connection."
+}
+
+if [[ "$1" == "help" ]]; then
+    show_help
+    exit 0
+fi
+
+if [[ $EUID -ne 0 ]]; then
+   echo "❌ Error: 'omg repair' requires root privileges (use sudo)."
+   exit 1
+fi
+
+echo "🩹 OMG SYSTEM REPAIR INITIATED"
+echo "------------------------------------------------"
+
+if [ ! -d "$PKG_DIR" ] || [ -z "$(ls -A $PKG_DIR)" ]; then
+    echo "❌ Error: Local package cache not found at $PKG_DIR."
+    echo "This system cannot perform an air-gapped repair."
+    exit 1
+fi
+
+echo "📦 Step 1: Restoring core packages from local vault..."
+# dpkg -i installs the .deb files directly. 
+# --force-confold ensures we don't overwrite the admin's custom boat settings
+dpkg -i --force-confold $PKG_DIR/*.deb
+
+echo ""
+echo "⚙️  Step 2: Repairing any broken dependencies..."
+apt-get install -f -y
+
+echo ""
+echo "🔄 Step 3: Restarting Marine Services..."
+systemctl restart hostapd
+systemctl restart dnsmasq
+systemctl restart signalk-server
+
+echo "------------------------------------------------"
+echo "✅ REPAIR COMPLETE: System files have been refreshed."
+echo "If issues persist, please run 'omg diag' and contact support."

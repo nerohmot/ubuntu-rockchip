@@ -1,35 +1,51 @@
 #!/bin/bash
 # Module: omg status
 
-echo "🚢 OPEN MARINE GATEWAY - SYSTEM HEALTH"
-echo "------------------------------------------------"
+show_help() {
+    echo "Usage: omg status [options]"
+    echo ""
+    echo "Options:"
+    echo "  --live    Live refreshing view (refreshes every 2s)"
+    echo ""
+    echo "Note: Running without options prints the current status to the screen once."
+}
 
-# 1. Check Config State
-if [ -f /var/lib/omg_configured ]; then
-    echo "✅ Configuration:  ACTIVE"
-else
-    echo "❌ Configuration:  NOT INITIALIZED (Run 'omg init')"
-fi
+# --- THE DATA PRINT ENGINE ---
+print_to_screen() {
+    echo "🚢 OPEN MARINE GATEWAY STATUS"
+    echo "------------------------------------------------"
+    echo "⏱️  Uptime:         $(uptime -p)"
+    
+    # Check Snap Optimization
+    echo -n "📦 OS Profile:     "
+    if ! command -v snap >/dev/null; then echo "DE-SNAP-IFIED (Optimized)"; else echo "STANDARD"; fi
+    
+    echo "🌐 Signal K:       $(systemctl is-active signalk-server)"
+    echo "📶 WiFi AP:        $(systemctl is-active hostapd)"
+    
+    # Check Parallel Bus Hardware
+    echo -n "🧬 Parallel Bus:   "
+    [ -c /dev/omg_bus ] && echo "CONNECTED" || echo "DISCONNECTED ⚠️"
+    
+    # Resources
+    TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{print $1/1000 "°C"}')
+    echo "🌡️  Core Temp:      ${TEMP:-N/A}"
+    echo "------------------------------------------------"
+}
 
-# 2. Check Services
-SK_ACTIVE=$(systemctl is-active signalk-server)
-AP_ACTIVE=$(systemctl is-active hostapd)
-echo "🌐 Signal K:       $SK_ACTIVE"
-echo "📶 WiFi AP:        $AP_ACTIVE"
-
-# 3. Check RP2354 Parallel Bus
-# We look for the presence of the /dev/omg_bus (created by your bridge driver)
-#if [ -c /dev/omg_bus ]; then
-#    echo "🧬 Parallel Bus:   CONNECTED"
-#    # Show last 3 lines of bus stats if available
-#    [[ -f /var/log/omg_bus.stats ]] && tail -n 3 /var/log/omg_bus.stats
-#else
-#    echo "🧬 Parallel Bus:   DISCONNECTED ⚠️"
-#fi
-
-# 4. System Resources
-TEMP=$(cat /sys/class/thermal/thermal_zone0/temp | awk '{print $1/1000 "°C"}')
-MEM=$(free -m | awk '/Mem:/ { print $3 "/" $2 " MB" }')
-echo "🌡️  Core Temp:      $TEMP"
-echo "🧠 Memory:         $MEM"
-echo "------------------------------------------------"
+# --- LOGIC ROUTER ---
+case "$1" in
+    --live)
+        echo "📡 Entering Live Monitoring (Ctrl+C to exit)..."
+        sleep 1
+        # 'watch' runs the script and prints the output every 2 seconds
+        watch -n 2 -t "/usr/local/lib/omg/omg-status"
+        ;;
+    help)
+        show_help
+        ;;
+    *)
+        # DEFAULT: Print to screen once
+        print_to_screen
+        ;;
+esac

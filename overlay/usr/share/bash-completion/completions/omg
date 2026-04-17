@@ -1,0 +1,42 @@
+# Bash completion for OMG (Open Marine Gateway) CLI
+
+_omg_completions() {
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    
+    # 1. Added 'repair' and 'version' to the main list
+    opts="init wifi mode status repair diag reset help version"
+
+    case "${prev}" in
+        wifi)
+            COMPREPLY=( $(compgen -W "random set show refresh help" -- ${cur}) )
+            return 0
+            ;;
+        mode)
+            COMPREPLY=( $(compgen -W "day night help" -- ${cur}) )
+            return 0
+            ;;
+        status)
+            # 2. Added future-proof options for live monitoring
+            COMPREPLY=( $(compgen -W "--live help" -- ${cur}) )
+            return 0
+            ;;
+        help)
+            COMPREPLY=( $(compgen -W "$opts" -- ${cur}) )
+            return 0
+            ;;
+        repair | diag | reset | init)
+            # 3. These usually take 'help' or nothing
+            COMPREPLY=( $(compgen -W "help" -- ${cur}) )
+            return 0
+            ;;
+        *)
+            ;;
+    esac
+
+    COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+}
+
+complete -F _omg_completions omg
