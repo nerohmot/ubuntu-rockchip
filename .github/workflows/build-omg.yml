@@ -83,7 +83,7 @@ jobs:
 
           # 2. 🔍 Debug: Print the full injection map (MANDATORY LOGGING)
           echo "------------------------------------------------"
-          echo "💉 Finalizing Build with Post-Compile SPI Fix:"
+          echo "💉 Finalizing Build with Root-Level Linking:"
           echo "UBOOT_PACKAGE:      '$PKG'"
           echo "U_BOOT_PACKAGE:     '$PKG'"
           echo "UBOOT_TARGET:       '$TGT'"
@@ -93,37 +93,29 @@ jobs:
           echo "U_BOOT_CONFIG:      '$CFG'"
           echo "------------------------------------------------"
 
-          # 3. 🔥 Stage 1: Compile until the SPI error occurs
-          # We use || true so the workflow continues to the 'touch' fix
-          echo "🛠️ Starting U-Boot compilation (Stage 1)..."
-          sudo \
-            UBOOT_PACKAGE="$PKG"        U_BOOT_PACKAGE="$PKG" \
-            UBOOT_TARGET="$TGT"         U_BOOT_TARGET="$TGT" \
-            UBOOT_RULES_TARGET="$TGT" \
-            UBOOT_CONFIG="$CFG"         U_BOOT_CONFIG="$CFG" \
-            ./scripts/build-u-boot.sh rock-5a || true
+          # 3. 🔥 Stage 1: Compile (with bypass logic)
+          sudo UBOOT_PACKAGE="$PKG" U_BOOT_PACKAGE="$PKG" \
+               UBOOT_TARGET="$TGT"  U_BOOT_TARGET="$TGT" \
+               UBOOT_RULES_TARGET="$TGT" \
+               UBOOT_CONFIG="$CFG"  U_BOOT_CONFIG="$CFG" \
+               ./scripts/build-u-boot.sh rock-5a || true
 
-          # 4. 🔥 THE BYPASS: Create the dummy SPI loader now that the folders exist
-          echo "🛠️ Creating missing SPI loader dummy..."
+          # 4. 🔥 THE BYPASS: Create dummy SPI loader
           sudo mkdir -p build/$PKG/debian/build/rock-5a-spi-rk3588s
           sudo touch build/$PKG/debian/build/rock-5a-spi-rk3588s/rkspi_loader.img
 
-          # 5. 🔥 Stage 2: Re-run to finalize the .deb package
-          echo "🛠️ Finalizing U-Boot packaging (Stage 2)..."
-          sudo \
-            UBOOT_PACKAGE="$PKG"        U_BOOT_PACKAGE="$PKG" \
-            UBOOT_TARGET="$TGT"         U_BOOT_TARGET="$TGT" \
-            UBOOT_RULES_TARGET="$TGT" \
-            UBOOT_CONFIG="$CFG"         U_BOOT_CONFIG="$CFG" \
-            ./scripts/build-u-boot.sh rock-5a
+          # 5. 🔥 Stage 2: Finalize the .deb package
+          sudo UBOOT_PACKAGE="$PKG" U_BOOT_PACKAGE="$PKG" \
+               UBOOT_TARGET="$TGT"  U_BOOT_TARGET="$TGT" \
+               UBOOT_RULES_TARGET="$TGT" \
+               UBOOT_CONFIG="$CFG"  U_BOOT_CONFIG="$CFG" \
+               ./scripts/build-u-boot.sh rock-5a
 
-          # 6. Create the 'omg' alias link
+          # 6. 🔗 THE FIX: Link Radxa U-Boot to OMG using SUDO
           echo "🔗 Linking Radxa U-Boot to OMG..."
-          cd build
-          ln -sf u-boot-*.deb u-boot-omg_99.99_arm64.deb
-          ls -F
-          cd ..
-
+          # We use sudo here to overcome the 'Permission denied' error
+          sudo ln -sf build/u-boot-rock-5a_*.deb build/u-boot-omg_99.99_arm64.deb
+          
           # 7. Final Image Build
           echo "🚀 Starting main image build..."
           sudo -E ./build.sh --board=omg --suite=noble --flavor=server
