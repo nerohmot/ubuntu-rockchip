@@ -76,42 +76,45 @@ jobs:
 
       - name: Build OMG Image
         run: |
-          # 1. Define the variables
+          # 1. Define the core strings
           PKG="u-boot-radxa-rk3588"
           TGT="radxa-rk3588"
           CFG="rock-5a-rk3588_defconfig"
 
-          # 2. 🔍 Debug: Print both naming conventions to the log
+          # 2. 🔍 Debug: Print the full injection map
           echo "------------------------------------------------"
-          echo "💉 Preparing Double-Injected Variables:"
-          echo "Script wants UBOOT_PACKAGE: '$PKG'"
-          echo "Config uses U_BOOT_PACKAGE: '$PKG'"
+          echo "💉 Preparing Triple-Injected Variables:"
+          echo "Package:      '$PKG' (UBOOT_PACKAGE)"
+          echo "Target:       '$TGT' (UBOOT_TARGET / UBOOT_RULES_TARGET)"
+          echo "Config:       '$CFG' (UBOOT_CONFIG)"
           echo "------------------------------------------------"
 
-          # 3. 🔥 THE DOUBLE-INJECTION
-          # We provide both U_BOOT and UBOOT versions to satisfy all scripts
+          # 3. 🔥 THE TRIPLE-INJECTION
+          # We provide every possible variation to satisfy the script and the debian/rules Makefile
           echo "🛠️ Compiling U-Boot..."
           sudo \
-            U_BOOT_PACKAGE="$PKG" UBOOT_PACKAGE="$PKG" \
-            U_BOOT_TARGET="$TGT"  UBOOT_TARGET="$TGT" \
-            U_BOOT_CONFIG="$CFG"  UBOOT_CONFIG="$CFG" \
+            UBOOT_PACKAGE="$PKG"        U_BOOT_PACKAGE="$PKG" \
+            UBOOT_TARGET="$TGT"         U_BOOT_TARGET="$TGT" \
+            UBOOT_RULES_TARGET="$TGT" \
+            UBOOT_CONFIG="$CFG"         U_BOOT_CONFIG="$CFG" \
             ./scripts/build-u-boot.sh rock-5a
           
           # 4. Create the 'omg' alias link
           echo "🔗 Linking Radxa U-Boot to OMG..."
           cd build
-          # -f forces the link even if a broken one exists
+          # -sf ensures we overwrite and don't fail if a link already exists
           ln -sf u-boot-rock-5a_*.deb u-boot-omg_99.99_arm64.deb
           echo "Current build directory contents:"
           ls -F
           cd ..
 
-          # 5. Final Image Build (Using the same double-injection)
+          # 5. Final Image Build (Using the same triple-injection)
           echo "🚀 Starting main image build..."
           sudo \
-            U_BOOT_PACKAGE="$PKG" UBOOT_PACKAGE="$PKG" \
-            U_BOOT_TARGET="$TGT"  UBOOT_TARGET="$TGT" \
-            U_BOOT_CONFIG="$CFG"  UBOOT_CONFIG="$CFG" \
+            UBOOT_PACKAGE="$PKG"        U_BOOT_PACKAGE="$PKG" \
+            UBOOT_TARGET="$TGT"         U_BOOT_TARGET="$TGT" \
+            UBOOT_RULES_TARGET="$TGT" \
+            U_BOOT_CONFIG="$CFG"        U_BOOT_CONFIG="$CFG" \
             ./build.sh --board=omg --suite=noble --flavor=server
 
       - name: Debug Build Directory on Failure
