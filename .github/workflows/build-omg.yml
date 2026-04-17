@@ -76,21 +76,14 @@ jobs:
 
       - name: Build OMG Image
         run: |
-          # 1. 🔍 THE SPY STEP: Find out what targets actually exist
-          echo "🔎 Investigating U-Boot targets..."
-          TARGET_VARS="packages/u-boot-radxa-rk3588/debian/control.d/vars.rockchip"
-          if [ -f "$TARGET_VARS" ]; then
-            echo "Contents of $TARGET_VARS:"
-            cat "$TARGET_VARS"
-          else
-            echo "Looking for any vars files in debian/control.d/:"
-            ls packages/u-boot-radxa-rk3588/debian/control.d/
-          fi
-
-          # 2. Define our best guess for now (based on the common Radxa RK3588 target)
-          # In many of Joshua's builds, the target is actually 'rock-5a-rk3588'
+          # 1. 🔍 THE SPY STEP (Non-crashing version)
+          echo "🔎 Listing all possible U-Boot targets in the repo..."
+          find packages/u-boot-radxa-rk3588/ -name "vars.*" || echo "Vars not found"
+          
+          # 2. Define the core strings
+          # 'radxa-cm5-rk3588' is the standard target for the NX5/CM5 silicon
           PKG="u-boot-radxa-rk3588"
-          TGT="rock-5a-rk3588" 
+          TGT="radxa-cm5-rk3588" 
           CFG="rock-5a-rk3588_defconfig"
 
           # 3. 🔍 Debug: Print the full injection map (KEEPING THE ECHO)
