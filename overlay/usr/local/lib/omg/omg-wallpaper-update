@@ -1,0 +1,30 @@
+#!/bin/bash
+# Module: Internal Wallpaper Processor
+
+STATE_FILE="/var/lib/omg/mode.env"
+NET_FILE="/var/lib/omg/network.env"
+FINAL_WALLPAPER="/var/lib/omg/active_wallpaper.png"
+QR_TEMP="/tmp/omg_qr.png"
+
+# 1. Load State
+source $STATE_FILE 2>/dev/null || SOURCE_IMAGE="/usr/share/backgrounds/omg-day.png"
+source $NET_FILE 2>/dev/null || SSID="OMG_Gateway"
+
+# 2. Generate QR
+# If in night mode, we can make the QR red-on-black for safety!
+if [[ "$CURRENT_MODE" == "night" ]]; then
+    qrencode -s 6 -margin 2 --foreground=FF0000 --background=000000 -o $QR_TEMP "WIFI:S:$SSID;T:WPA;P:$PASS;;"
+else
+    qrencode -s 6 -margin 2 -o $QR_TEMP "WIFI:S:$SSID;T:WPA;P:$PASS;;"
+fi
+
+# 3. Stamp it onto the wallpaper (Top-Right)
+magick "$SOURCE_IMAGE" \
+    -fill white -draw "roundrectangle 1640,10,1910,310 15,15" \
+    \( "$QR_TEMP" -resize 240x240 \) -gravity NorthEast -geometry +35+25 -composite \
+    -fill black -pointsize 18 -annotate +50+280 "Boat Wi-Fi: $SSID" \
+    "$FINAL_WALLPAPER"
+
+# 4. Apply to the Live Desktop
+sudo -u omg DISPLAY=:0 gsettings set org.gnome.desktop.background picture-uri "file://$FINAL_WALLPAPER"
+sudo -u omg DISPLAY=:0 gsettings set org.gnome.desktop.background picture-uri-dark "file://$FINAL_WALLPAPER"

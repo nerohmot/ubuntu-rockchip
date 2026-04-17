@@ -1,0 +1,62 @@
+#!/bin/bash
+# Module: omg mode
+# Handles: Day/Night theme switching and QR restamping
+
+# Paths
+SOURCE_DAY="/usr/share/backgrounds/omg-day.png"
+SOURCE_NIGHT="/usr/share/backgrounds/omg-night.png"
+STATE_FILE="/var/lib/omg/mode.env"
+WALLPAPER_UPDATE="/usr/local/lib/omg/omg-wallpaper-update"
+
+show_help() {
+    echo "Usage: omg mode <day|night>"
+    echo ""
+    echo "Description:"
+    echo "  day   - Standard high-contrast wallpaper for sunlight visibility."
+    echo "  night - Low-luminance, red-tinted wallpaper to protect night vision."
+}
+
+# 1. Handle Help
+if [[ "$1" == "help" ]] || [[ -z "$1" ]]; then
+    show_help
+    exit 0
+fi
+
+# 2. Check for Sudo
+if [[ $EUID -ne 0 ]]; then
+   echo "❌ Error: 'omg mode' requires root privileges (use sudo)."
+   exit 1
+fi
+
+# 3. Action Logic
+case "$1" in
+    day)
+        if [[ ! -f "$SOURCE_DAY" ]]; then echo "❌ Error: Day wallpaper missing."; exit 1; fi
+        SELECTED_SOURCE="$SOURCE_DAY"
+        MODE_NAME="day"
+        ;;
+    night)
+        if [[ ! -f "$SOURCE_NIGHT" ]]; then echo "❌ Error: Night wallpaper missing."; exit 1; fi
+        SELECTED_SOURCE="$SOURCE_NIGHT"
+        MODE_NAME="night"
+        ;;
+    *)
+        echo "❌ Error: Unknown mode '$1'"
+        show_help
+        exit 1
+        ;;
+esac
+
+# 4. Save State
+mkdir -p /var/lib/omg
+echo "CURRENT_MODE=$MODE_NAME" > $STATE_FILE
+echo "SOURCE_IMAGE=$SELECTED_SOURCE" >> $STATE_FILE
+
+# 5. Trigger the Wallpaper Update
+if [[ -f "$WALLPAPER_UPDATE" ]]; then
+    echo "🎨 Switching to $MODE_NAME mode..."
+    $WALLPAPER_UPDATE
+    echo "✅ Theme applied successfully."
+else
+    echo "⚠️  Warning: $WALLPAPER_UPDATE not found. Theme changed in config only."
+fi

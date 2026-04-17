@@ -1,0 +1,65 @@
+#!/bin/bash
+# Module: omg reset
+# Handles: Factory Reset, Data Wiping, and Security Clearing
+
+DATA_DIR="/var/lib/omg"
+CONFIG_FLAG="/var/lib/omg_configured"
+HOSTAPD_CONF="/etc/hostapd/hostapd.conf"
+HOSTAPD_BAK="/etc/hostapd/hostapd.conf.bak"
+
+show_help() {
+    echo "Usage: omg reset"
+    echo ""
+    echo "Description:"
+    echo "  Permanently wipes all vessel identity, WiFi credentials,"
+    echo "  and Signal K settings. Returns the gateway to factory state."
+    echo "  ⚠️  THIS ACTION CANNOT BE UNDONE."
+}
+
+# 1. Handle Help
+if [[ "$1" == "help" ]]; then
+    show_help
+    exit 0
+fi
+
+# 2. Check for Sudo
+if [[ $EUID -ne 0 ]]; then
+   echo "❌ Error: 'omg reset' requires root privileges (use sudo)."
+   exit 1
+fi
+
+echo "⚠️  WARNING: FACTORY RESET INITIATED"
+echo "This will wipe all vessel data and reboot the system."
+read -p "Are you absolutely sure? [y/N]: " confirm
+
+if [[ $confirm != [yY] ]]; then
+    echo "Reset cancelled."
+    exit 0
+fi
+
+echo "🧹 Cleaning system..."
+
+# 3. Wipe OMG Data
+rm -rf $DATA_DIR/*
+rm -f $CONFIG_FLAG
+
+# 4. Reset WiFi to Defaults
+if [[ -f "$HOSTAPD_BAK" ]]; then
+    cp "$HOSTAPD_BAK" "$HOSTAPD_CONF"
+    echo "📡 WiFi configuration restored to defaults."
+fi
+
+# 5. Wipe Signal K Settings (Privacy)
+# This removes vessel name/MMSI and login tokens from Signal K
+if [[ -d "/home/omg/.signalk" ]]; then
+    rm -rf /home/omg/.signalk/*
+    echo "⚓ Signal K data cleared."
+fi
+
+# 6. Reset Wallpaper to Day Mode
+sudo -u omg DISPLAY=:0 gsettings set org.gnome.desktop.background picture-uri "file:///usr/share/backgrounds/omg-day.png"
+
+echo "✅ Factory Reset Complete."
+echo "🔄 Rebooting in 5 seconds..."
+sleep 5
+reboot

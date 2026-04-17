@@ -1,0 +1,72 @@
+#!/bin/bash
+# Module: omg init
+# Handles: First-time setup, Vessel Identity, and Strong Security
+
+DATA_FILE="/var/lib/omg/network.env"
+VESSEL_FILE="/var/lib/omg/vessel.env"
+
+show_help() {
+    echo "Usage: omg init"
+    echo ""
+    echo "Description:"
+    echo "  Starts the interactive first-time setup for the gateway."
+    echo "  - Sets Vessel Name and MMSI"
+    echo "  - Generates a unique, high-entropy Wi-Fi password"
+    echo "  - Customizes the SSID to match the boat name"
+    echo "  - Refreshes the Desktop QR code"
+}
+
+if [[ "$1" == "help" ]]; then
+    show_help
+    exit 0
+fi
+
+if [[ $EUID -ne 0 ]]; then
+   echo "❌ Error: 'omg init' must be run with sudo."
+   exit 1
+fi
+
+echo "🚢 OPEN MARINE GATEWAY - INITIALIZATION"
+echo "------------------------------------------------"
+
+# 1. Collect Vessel Data
+read -p "🔹 Enter Vessel Name [OpenMarine]: " RAW_NAME
+RAW_NAME=${RAW_NAME:-OpenMarine}
+
+read -p "🔹 Enter Vessel MMSI [000000000]: " MMSI
+MMSI=${MMSI:-000000000}
+
+# 2. Sanitize Name for SSID (Remove specials, spaces to underscores)
+CLEAN_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9 ]//g' | tr ' ' '_')
+SSID="OMG_$CLEAN_NAME"
+
+# 3. Generate Strong WiFi Password (16 chars)
+WIFI_PASS=$(tr -dc 'A-HJ-NP-Z2-9' < /dev/urandom | head -c 16)
+
+# 4. Save Configuration
+mkdir -p /var/lib/omg
+cat <<EOF > $DATA_FILE
+SSID=$SSID
+PASS=$WIFI_PASS
+EOF
+
+cat <<EOF > $VESSEL_FILE
+VESSEL_NAME="$RAW_NAME"
+VESSEL_MMSI="$MMSI"
+CONFIG_DATE="$(date)"
+EOF
+
+# 5. Apply to System
+echo "⚙️  Configuring Wi-Fi Access Point..."
+# We reuse the omg-wifi module logic to apply the network changes
+/usr/local/lib/omg/omg-wifi set "$WIFI_PASS" > /dev/null
+
+# 6. Flag as Configured
+touch /var/lib/omg_configured
+
+echo "------------------------------------------------"
+echo "✅ SUCCESS: Vessel '$RAW_NAME' is now registered."
+echo "📡 SSID: $SSID"
+echo "🔐 PASS: $WIFI_PASS"
+echo "🖼️  The connection QR code is now on the desktop."
+echo "------------------------------------------------"

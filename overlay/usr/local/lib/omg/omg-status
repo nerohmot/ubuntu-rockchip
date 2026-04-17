@@ -1,0 +1,35 @@
+#!/bin/bash
+# Module: omg status
+
+echo "🚢 OPEN MARINE GATEWAY - SYSTEM HEALTH"
+echo "------------------------------------------------"
+
+# 1. Check Config State
+if [ -f /var/lib/omg_configured ]; then
+    echo "✅ Configuration:  ACTIVE"
+else
+    echo "❌ Configuration:  NOT INITIALIZED (Run 'omg init')"
+fi
+
+# 2. Check Services
+SK_ACTIVE=$(systemctl is-active signalk-server)
+AP_ACTIVE=$(systemctl is-active hostapd)
+echo "🌐 Signal K:       $SK_ACTIVE"
+echo "📶 WiFi AP:        $AP_ACTIVE"
+
+# 3. Check RP2354 Parallel Bus
+# We look for the presence of the /dev/omg_bus (created by your bridge driver)
+#if [ -c /dev/omg_bus ]; then
+#    echo "🧬 Parallel Bus:   CONNECTED"
+#    # Show last 3 lines of bus stats if available
+#    [[ -f /var/log/omg_bus.stats ]] && tail -n 3 /var/log/omg_bus.stats
+#else
+#    echo "🧬 Parallel Bus:   DISCONNECTED ⚠️"
+#fi
+
+# 4. System Resources
+TEMP=$(cat /sys/class/thermal/thermal_zone0/temp | awk '{print $1/1000 "°C"}')
+MEM=$(free -m | awk '/Mem:/ { print $3 "/" $2 " MB" }')
+echo "🌡️  Core Temp:      $TEMP"
+echo "🧠 Memory:         $MEM"
+echo "------------------------------------------------"

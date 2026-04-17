@@ -1,0 +1,102 @@
+#!/bin/bash
+# Module: omg wifi
+# Handles: Access Point SSID, Passwords, and QR Refresh
+
+#
+# sed -i 's/\r$//' overlay/usr/local/lib/omg/omg-wifi
+# chmod +x overlay/usr/local/lib/omg/omg-wifi
+#
+
+
+DATA_FILE="/var/lib/omg/network.env"
+HOSTAPD_CONF="/etc/hostapd/hostapd.conf"
+WALLPAPER_UPDATE="/usr/local/lib/omg/omg-wallpaper-update"
+
+show_help() {
+    echo "Usage: omg wifi <action> [options]"
+    echo ""
+    echo "Actions:"
+    echo "  random          Generate a high-entropy 16-char password"
+    echo "  set <pass>      Manually set a specific Wi-Fi password"
+    echo "  show            Display current SSID and Password"
+    echo "  refresh         Force regenerate the QR wallpaper"
+    echo ""
+    echo "Examples:"
+    echo "  omg wifi random"
+    echo "  omg wifi set MySecurePass123"
+}
+
+# 1. Handle Help Request
+if [[ "$1" == "help" ]] || [[ -z "$1" ]]; then
+    show_help
+    exit 0
+fi
+
+# 2. Check for Sudo (Required for hostapd and /var/lib/omg)
+if [[ $EUID -ne 0 ]]; then
+   echo "❌ Error: 'omg wifi' requires root privileges (use sudo)."
+   exit 1
+fi
+
+# 3. Ensure Data File exists
+mkdir -p /var/lib/omg
+touch $DATA_FILE
+
+# 4. Action Logic
+case "$1" in
+    random)
+        # Generate 16 chars, excluding confusing characters (0/O, 1/L/I)
+        NEW_PASS=$(tr -dc 'A-HJ-NP-Z2-9' < /dev/urandom | head -c 16)
+        echo "🎲 Generated new random password: $NEW_PASS"
+        ;;
+    set)
+        if [[ -z "$2" ]]; then
+            echo "❌ Error: Please provide a password (e.g., omg wifi set <password>)"
+            exit 1
+        fi
+        NEW_PASS="$2"
+        echo "✍️ Setting custom password: $NEW_PASS"
+        ;;
+    show)
+        SSID=$(grep "SSID=" $DATA_FILE | cut -d'=' -f2)
+        PASS=$(grep "PASS=" $DATA_FILE | cut -d'=' -f2)
+        echo "📡 Current SSID: $SSID"
+        echo "🔐 Current PASS: $PASS"
+        exit 0
+        ;;
+    refresh)
+        echo "🔄 Refreshing QR code..."
+        $WALLPAPER_UPDATE
+        exit 0
+        ;;
+    *)
+        echo "❌ Error: Unknown action '$1'"
+        show_help
+        exit 1
+        ;;
+esac
+
+# 5. Apply Changes to System
+if [[ -n "$NEW_PASS" ]]; then
+    # Update our internal record
+    if grep -q "PASS=" $DATA_FILE; then
+        sed -i "s/^PASS=.*/PASS=$NEW_PASS/" $DATA_FILE
+    else
+        echo "PASS=$NEW_PASS" >> $DATA_FILE
+    fi
+
+    # Update hostapd.conf
+    if [[ -f "$HOSTAPD_CONF" ]]; then
+        sed -i "s/^wpa_passphrase=.*/wpa_passphrase=$NEW_PASS/" $HOSTAPD_CONF
+        systemctl restart hostapd
+        echo "📡 Wi-Fi service restarted."
+    else
+        echo "⚠️  Warning: $HOSTAPD_CONF not found. Skipping service restart."
+    fi
+
+    # Update the UI
+    if [[ -f "$WALLPAPER_UPDATE" ]]; then
+        $WALLPAPER_UPDATE
+        echo "🖼️  Desktop QR code updated."
+    fi
+fi

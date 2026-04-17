@@ -52,18 +52,43 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-omg-build-
 
-      - name: Build OMG Image
+      - name: 🧹 Global Line-Ending Sanitizer
         run: |
-          # 1. Run the build
-          sudo ./build.sh --board=omg --suite=noble --flavor=server || true
+          echo "Stripping Windows CRLF from all files..."
+          find . -type f -exec sed -i 's/\r//g' {} +
 
-          # 2. If it failed because it couldn't find the .deb, let's fix it manually
-          if [ ! -f build/u-boot-omg_*.deb ]; then
-            echo "🔧 Manually linking U-Boot package..."
-            sudo ln -s $(ls build/u-boot-radxa-rk3588_*.deb | head -n 1) build/u-boot-omg_1.0_arm64.deb
+      - name: 🔑 Set Script Permissions
+        run: |
+          echo "Enabling execution for build scripts..."
+          # Explicitly target the main build script in the root
+          [ -f "./build.sh" ] && chmod +x ./build.sh
+          
+          # Target scripts in the sub-directory by path
+          if [ -d "scripts" ]; then
+            find scripts/ -type f -name "*.sh" -exec chmod +x {} +
           fi
 
-          # 3. Resume the build to finish the image
+          echo "Enabling execution for OMG CLI modules..."
+          # Target the overlay scripts by their full path from the root
+          if [ -d "overlay/usr/local/bin" ]; then
+            chmod +x overlay/usr/local/bin/*
+          fi
+
+      - name: Build OMG Image
+        run: |
+          # 1. Build the bootloader using the known Radxa target
+          sudo ./scripts/build-u-boot.sh rock-5a
+
+          # 2. THE BRUTE FORCE LINK: Find the .deb we just made and link it to 'omg'
+          # This works regardless of whether it's named 'rock-5a' or 'radxa-rk3588'
+          echo "🔗 Linking whatever U-Boot we found to 'omg'..."
+          cd build
+          UBOOT_FILE=$(ls u-boot-*.deb | head -n 1)
+          ln -sf "$UBOOT_FILE" "u-boot-omg_99.99_arm64.deb"
+          echo "Linked $UBOOT_FILE to u-boot-omg_99.99_arm64.deb"
+          cd ..
+
+          # 3. Final build attempt
           sudo ./build.sh --board=omg --suite=noble --flavor=server
 
       - name: Debug Build Directory on Failure

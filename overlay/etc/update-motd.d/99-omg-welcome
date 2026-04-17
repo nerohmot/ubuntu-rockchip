@@ -1,0 +1,7 @@
+#!/bin/bash
+# If the flag file is MISSING, show the warning
+if [ ! -f /var/lib/omg_configured ]; then
+    echo -e "\n\e[91m⚠️  OMG SYSTEM STATUS: UNCONFIGURED\e[0m"
+    echo -e "This gateway is in factory state."
+    echo -e "Please run: \e[92msudo omg init\e[0m to begin setup.\n"
+fi

@@ -1,0 +1,51 @@
+#!/bin/bash
+# OMG - Open Marine Gateway Unified CLI v1.1
+# Main Entry Point
+
+LIB_PATH="/usr/local/lib/omg"
+VERSION="1.1.0"
+
+show_main_help() {
+    echo "🚢 Open Marine Gateway (OMG) v$VERSION"
+    echo "Usage: omg [help] <command> [args]"
+    echo ""
+    echo "Commands:"
+    echo "  init      Vessel identity & security setup"
+    echo "  wifi      Manage WiFi (Password/SSID/QR)"
+    echo "  mode      Switch Display Mode (day/night)"
+    echo "  status    Check system & sensor health"
+    echo "  diag      Generate a diagnostic report for support"
+    echo "  reset     Factory reset (Wipes all boat data)"
+    echo ""
+    echo "Example: 'omg help wifi' for command details."
+}
+
+# No arguments or 'omg help'
+if [[ $# -eq 0 ]] || [[ "$1" == "help" && $# -eq 1 ]]; then
+    show_main_help
+    exit 0
+fi
+
+# Route 'omg help <command>'
+if [[ "$1" == "help" ]]; then
+    CMD=$2
+    if [[ -f "$LIB_PATH/omg-$CMD" ]]; then
+        $LIB_PATH/omg-$CMD help
+    else
+        echo "❌ Unknown command: $CMD"
+        show_main_help
+    fi
+    exit 0
+fi
+
+# Execute 'omg <command>'
+CMD=$1
+shift
+if [[ -f "$LIB_PATH/omg-$CMD" ]]; then
+    # Some commands require sudo; we check within the module
+    $LIB_PATH/omg-$CMD "$@"
+else
+    echo "❌ Error: '$CMD' is not a valid OMG command."
+    show_main_help
+    exit 1
+fi

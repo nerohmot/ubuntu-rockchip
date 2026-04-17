@@ -1,0 +1,35 @@
+#!/bin/bash
+# Module: omg diag
+
+show_help() {
+    echo "Usage: omg diag"
+    echo ""
+    echo "Description:"
+    echo "  Gathers system logs, network configs, and bridge stats into"
+    echo "  a .tar.gz file in the home directory for troubleshooting."
+}
+
+if [[ "$1" == "help" ]]; then
+    show_help
+    exit 0
+fi
+
+OUT_FILE="/home/omg/omg_diag_$(date +%Y%m%d_%H%M).tar.gz"
+TEMP_DIR="/tmp/omg_diag_tmp"
+
+echo "🔍 Collecting OMG Diagnostics..."
+mkdir -p $TEMP_DIR
+
+# Gather Logs
+dmesg > $TEMP_DIR/kernel.log
+journalctl -u signalk-server --no-pager -n 500 > $TEMP_DIR/signalk.log
+cp /var/lib/omg/*.env $TEMP_DIR/ 2>/dev/null
+ip addr > $TEMP_DIR/network.log
+lsblk > $TEMP_DIR/storage.log
+
+# Package it
+tar -czf $OUT_FILE -C /tmp omg_diag_tmp
+rm -rf $TEMP_DIR
+
+echo "✅ Diagnostic report created: $OUT_FILE"
+echo "Please send this file to support@vectore.marine"
