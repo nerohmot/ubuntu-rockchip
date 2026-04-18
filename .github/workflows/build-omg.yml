@@ -55,6 +55,19 @@ jobs:
 
       - name: Build Core Components
         run: |
+          # 0. 🛡️ THE GATEKEEPER: Stop immediately if DTC is missing
+          echo "🔍 Verifying Build Tools..."
+          
+          DTC_PATH=$(which dtc 2>/dev/null) || { 
+            echo "❌ CRITICAL ERROR: device-tree-compiler (dtc) is NOT installed!"
+            echo "Checking apt history..."
+            dpkg -l | grep device-tree-compiler || echo "Package not found in dpkg list."
+            exit 1 
+          }
+          
+          echo "✅ DTC found at: $DTC_PATH"
+          echo "DTC Version: $(dtc -v)"
+
           # 1. Standard Environment
           export SUITE="noble"
           export FLAVOR="server"
