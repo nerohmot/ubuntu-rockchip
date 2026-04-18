@@ -97,7 +97,8 @@ jobs:
             udev \
             dosfstools \
             debhelper \
-            fakeroot
+            fakeroot \
+            gcc-aarch64-linux-gnu
 
       - name: 🛡️ Sanitizer & Permissions
         run: |
