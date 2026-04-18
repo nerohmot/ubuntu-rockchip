@@ -123,25 +123,32 @@ jobs:
 
       - name: Build OMG Image
         run: |
-          # --- MANDATORY LOGGING ---
+          # 1. 💉 THE RE-INJECTION: These must be set in Job 2 too!
           export PKG="u-boot-radxa-rk3588"
           export TGT="rock-5a-rk3588s"
-          export SUITE="noble"
-          export FLAVOR="server"
+          export CFG="rock-5a-rk3588_defconfig"
+
+          # 2. 🔍 Debug: Print the map (MANDATORY LOGGING)
           echo "------------------------------------------------"
-          echo "💉 Finalizing Build with Full Environment Injection:"
-          echo "UBOOT_PACKAGE: '$PKG'"
-          echo "SUITE:         '$SUITE'"
+          echo "💉 Job 2 Variable Injection:"
+          echo "UBOOT_PACKAGE:      '$PKG'"
+          echo "UBOOT_TARGET:       '$TGT'"
+          echo "UBOOT_RULES_TARGET: '$TGT'"
+          echo "UBOOT_CONFIG:       '$CFG'"
           echo "------------------------------------------------"
 
-          # 1. Link the bootloader
-          sudo ln -sf $(ls build/u-boot-rock-5a_*.deb | head -n 1) build/u-boot-omg_99.99_arm64.deb
+          # 3. 🔗 The Link: Satisfy the builder search
+          echo "🔗 Linking Radxa U-Boot to OMG..."
+          sudo ln -sf build/u-boot-rock-5a_*.deb build/u-boot-omg_99.99_arm64.deb
           
-          # 2. 🔥 THE NVIDIA BYPASS
-          export APT_OPTIONS="--no-install-recommends --no-install-suggests"
-
-          # 3. Final Build
-          sudo -E UBOOT_PACKAGE="$PKG" ./build.sh --board=omg --suite=$SUITE --flavor=$FLAVOR
+          # 4. 🚀 THE MAIN EVENT: Use -E to pass variables into sudo
+          echo "🚀 Starting main image build..."
+          sudo -E \
+            UBOOT_PACKAGE="$PKG" \
+            UBOOT_TARGET="$TGT" \
+            UBOOT_RULES_TARGET="$TGT" \
+            UBOOT_CONFIG="$CFG" \
+            ./build.sh --board=omg --suite=noble --flavor=server
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
