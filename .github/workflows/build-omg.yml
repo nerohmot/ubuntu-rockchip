@@ -79,8 +79,8 @@ jobs:
             flag="${entry#*:}"
             
             if command -v "$tool" >/dev/null 2>&1; then
-              # Get version and grab only the first line for cleanliness
-              VERSION=$($tool $flag 2>&1 | head -n 1)
+              # Get version and grab only the first non-empty line for cleanliness
+              VERSION=$($tool $flag 2>&1 | grep -v '^[[:space:]]*$' | head -n 1)
               echo "✅ $tool: $VERSION"
               echo "   Path: $(which $tool)"
             else
