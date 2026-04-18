@@ -9,16 +9,30 @@ jobs:
   build-foundation:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout Code
+      - name: 🛒 Checkout Code
         uses: actions/checkout@v4
 
       - name: 🛡️ Sanitizer & Permissions
         run: |
-          find . -type f -exec sed -i 's/\r//g' {} +
-          chmod +x *.sh
-          if [ -d "scripts" ]; then chmod +x scripts/*.sh; fi
+          echo "🔍 Stripping Windows line endings (CRLF → LF)..."
+          CRLF_FILES=$(grep -rlU $'\r' --include="*.sh" --include="*.yml" --include="*.md" . 2>/dev/null | grep -v ".git" || true)
+          if [ -n "$CRLF_FILES" ]; then
+            echo "$CRLF_FILES" | while read -r f; do echo "  🔧 Fixed: $f"; done
+            echo "$CRLF_FILES" | xargs sed -i 's/\r//g'
+          else
+            echo "  ✅ No CRLF files found."
+          fi
 
-      - name: Install Dependencies
+          echo "🔍 Setting execute permissions on shell scripts..."
+          CHMOD_FILES=$(find . -name "*.sh" ! -perm -u+x | grep -v ".git" || true)
+          if [ -n "$CHMOD_FILES" ]; then
+            echo "$CHMOD_FILES" | while read -r f; do echo "  🔧 chmod +x: $f"; done
+            echo "$CHMOD_FILES" | xargs chmod +x
+          else
+            echo "  ✅ All scripts already executable."
+          fi
+
+      - name: 📦 Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -47,18 +61,14 @@ jobs:
             udev \
             xz-utils
 
-      - name: Cache Build Directory
+      - name: 💾 Cache Build Directory
         uses: actions/cache@v4
         with:
           path: build/
-          key: ${{ runner.os }}-omg-foundation-${{ hashFiles('config/boards/omg.sh') }}
+          key: ${{ runner.os }}-omg-foundation-${{ hashFiles('config/boards/omg.sh', 'config/suites/noble.sh') }}
 
-      - name: 🔍 Verify Build Tools & Versions
+      - name: 🔍 Verify Build Tools
         run: |
-          echo "------------------------------------------------"
-          echo "🚢 OMG SYSTEM BLUEPRINT"
-          echo "------------------------------------------------"
-          
           # Define tools and how they report their version
           # Syntax: "tool_name:version_flag"
           TOOLS=(
@@ -81,8 +91,7 @@ jobs:
             if command -v "$tool" >/dev/null 2>&1; then
               # Get version and grab only the first non-empty line for cleanliness
               VERSION=$($tool $flag 2>&1 | grep -v '^[[:space:]]*$' | head -n 1)
-              echo "✅ $tool: $VERSION"
-              echo "   Path: $(which $tool)"
+              echo "✅ $tool: $(which $tool) ($VERSION)"
             else
               echo "❌ $tool: MISSING"
               MISSING=1
@@ -90,13 +99,10 @@ jobs:
           done
 
           if [ $MISSING -eq 1 ]; then
-            echo "------------------------------------------------"
-            echo "❌ FATAL: Environment incomplete."
             exit 1
           fi
-          echo "------------------------------------------------"
 
-      - name: Build Core Components
+      - name: ⚙️ Build Core Components
         run: |
           # 1. Standard Environment
           export SUITE="noble"
@@ -107,7 +113,7 @@ jobs:
 
           echo "------------------------------------------------"
           echo "💉 Environment Variables:"
-          VARS=("UBOOT_PACKAGE" "UBOOT_TARGET" "UBOOT_CONFIG" "SUITE" "FLAVOR")
+          VARS=("PKG" "TGT" "CFG" "SUITE" "FLAVOR")
           for var in "${VARS[@]}"; do
             echo "   $var: '${!var:-NOT SET}'"
           done
@@ -172,10 +178,10 @@ jobs:
     needs: build-foundation
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout Code
+      - name: 🛒 Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install Assembly Tools
+      - name: 🔧 Install Assembly Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -193,19 +199,40 @@ jobs:
 
       - name: 🛡️ Sanitizer & Permissions
         run: |
-          find . -type f -exec sed -i 's/\r//g' {} +
-          chmod +x *.sh
-          if [ -d "scripts" ]; then chmod +x scripts/*.sh; fi
-          if [ -d "overlay/usr/local/bin" ]; then chmod +x overlay/usr/local/bin/*; fi
-          if [ -d "overlay/usr/local/lib/omg" ]; then chmod +x overlay/usr/local/lib/omg/*; fi
+          echo "🔍 Stripping Windows line endings (CRLF → LF)..."
+          CRLF_FILES=$(grep -rlU $'\r' --include="*.sh" --include="*.yml" --include="*.md" . 2>/dev/null | grep -v ".git" || true)
+          if [ -n "$CRLF_FILES" ]; then
+            echo "$CRLF_FILES" | while read -r f; do echo "  🔧 Fixed: $f"; done
+            echo "$CRLF_FILES" | xargs sed -i 's/\r//g'
+          else
+            echo "  ✅ No CRLF files found."
+          fi
 
-      - name: Restore Foundation Cache
+          echo "🔍 Setting execute permissions on shell scripts..."
+          CHMOD_FILES=$(find . -name "*.sh" ! -perm -u+x | grep -v ".git" || true)
+          if [ -n "$CHMOD_FILES" ]; then
+            echo "$CHMOD_FILES" | while read -r f; do echo "  🔧 chmod +x: $f"; done
+            echo "$CHMOD_FILES" | xargs chmod +x
+          else
+            echo "  ✅ All scripts already executable."
+          fi
+
+          echo "🔍 Setting execute permissions on overlay binaries..."
+          OVERLAY_FILES=$(find overlay/usr/local/bin overlay/usr/local/lib/omg -type f ! -perm -u+x 2>/dev/null || true)
+          if [ -n "$OVERLAY_FILES" ]; then
+            echo "$OVERLAY_FILES" | while read -r f; do echo "  🔧 chmod +x: $f"; done
+            echo "$OVERLAY_FILES" | xargs chmod +x
+          else
+            echo "  ✅ All overlay binaries already executable."
+          fi
+
+      - name: ♻️ Restore Foundation Cache
         uses: actions/cache@v4
         with:
           path: build/
-          key: ${{ runner.os }}-omg-foundation-${{ hashFiles('config/boards/omg.sh') }}
+          key: ${{ runner.os }}-omg-foundation-${{ hashFiles('config/boards/omg.sh', 'config/suites/noble.sh') }}
 
-      - name: Build OMG Image
+      - name: 🚢 Build OMG Image
         run: |
           # 1. 💉 THE RE-INJECTION: These must be set in Job 2 too!
           export PKG="u-boot-radxa-rk3588"
@@ -234,9 +261,9 @@ jobs:
             UBOOT_CONFIG="$CFG" \
             ./build.sh --board=omg --suite=noble --flavor=server
 
-      - name: Upload Artifact
+      - name: 📤 Upload Artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: OMG-Installer-Image
-          path: build/*.img.xz
+          path: images/*.img.xz
