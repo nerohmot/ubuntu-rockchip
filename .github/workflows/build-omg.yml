@@ -79,6 +79,13 @@ jobs:
             UBOOT_CONFIG="$CFG" \
             ./scripts/build-u-boot.sh rock-5a
 
+      - name: 🔑 Reclaim Build Directory for Cache
+        if: always() # Ensure this runs even if the build had a minor warning
+        run: |
+          echo "Changing ownership of build/ to 'runner' so it can be cached..."
+          sudo chown -R runner:runner build/
+          sudo chown -R runner:runner .ccache || true
+
   # --- JOB 2: THE OMG IMAGE (Assembly) ---
   build-omg:
     needs: build-foundation
