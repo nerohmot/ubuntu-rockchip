@@ -53,21 +53,58 @@ jobs:
           path: build/
           key: ${{ runner.os }}-omg-foundation-${{ hashFiles('config/boards/omg.sh') }}
 
+      - name: 🔍 Verify Build Tools & Versions
+        run: |
+          echo "------------------------------------------------"
+          echo "🚢 OMG SYSTEM BLUEPRINT"
+          echo "------------------------------------------------"
+          
+          # Define tools and how they report their version
+          # Syntax: "tool_name:version_flag"
+          TOOLS=(
+            "dtc:-v" 
+            "aarch64-linux-gnu-gcc:--version" 
+            "make:--version" 
+            "bison:--version" 
+            "flex:--version" 
+            "gawk:--version" 
+            "swig:-version"
+            "python3:--version"
+          )
+          
+          MISSING=0
+
+          for entry in "${TOOLS[@]}"; do
+            tool="${entry%%:*}"
+            flag="${entry#*:}"
+            
+            if command -v "$tool" >/dev/null 2>&1; then
+              # Get version and grab only the first line for cleanliness
+              VERSION=$($tool $flag 2>&1 | head -n 1)
+              echo "✅ $tool: $VERSION"
+              echo "   Path: $(which $tool)"
+            else
+              echo "❌ $tool: MISSING"
+              MISSING=1
+            fi
+          done
+
+          echo "------------------------------------------------"
+          echo "💉 Environment Variables:"
+          VARS=("UBOOT_PACKAGE" "UBOOT_TARGET" "UBOOT_CONFIG" "SUITE" "FLAVOR")
+          for var in "${VARS[@]}"; do
+            echo "   $var: '${!var:-NOT SET}'"
+          done
+
+          if [ $MISSING -eq 1 ]; then
+            echo "------------------------------------------------"
+            echo "❌ FATAL: Environment incomplete."
+            exit 1
+          fi
+          echo "------------------------------------------------"
+
       - name: Build Core Components
         run: |
-          # 0. 🛡️ THE GATEKEEPER: Stop immediately if DTC is missing
-          echo "🔍 Verifying Build Tools..."
-          
-          DTC_PATH=$(which dtc 2>/dev/null) || { 
-            echo "❌ CRITICAL ERROR: device-tree-compiler (dtc) is NOT installed!"
-            echo "Checking apt history..."
-            dpkg -l | grep device-tree-compiler || echo "Package not found in dpkg list."
-            exit 1 
-          }
-          
-          echo "✅ DTC found at: $DTC_PATH"
-          echo "DTC Version: $(dtc -v)"
-
           # 1. Standard Environment
           export SUITE="noble"
           export FLAVOR="server"
