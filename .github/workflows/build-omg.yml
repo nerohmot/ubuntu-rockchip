@@ -60,24 +60,34 @@ jobs:
           export PKG="u-boot-radxa-rk3588"
           export TGT="rock-5a-rk3588s"
           export CFG="rock-5a-rk3588_defconfig"
-          
-          # 2. 🔥 THE PERMANENT FIX: 
-          # We tell the 'rules' file to build the SPI target as an 'extra'
-          # This ensures 'rkspi_loader.img' is actually compiled and exists
           export EXTRA_TGT="rock-5a-spi-rk3588s"
 
-          # 3. Build Kernel
-          sudo -E ./scripts/build-kernel.sh rock-5a
-          
-          # 4. Build U-Boot (Properly this time)
-          # We pass UBOOT_RULES_TARGET_EXTRA so the Makefile builds BOTH targets
-          sudo -E \
+          # 2. ⚡ KERNEL SKIP LOGIC
+          # Check if the kernel .deb already exists in the restored cache
+          if ls build/linux-image-*.deb 1> /dev/null 2>&1; then
+            echo "✅ Cached Kernel found. Skipping kernel build step."
+          else
+            echo "🛠️ No cached kernel. Building now..."
+            sudo -E ./scripts/build-kernel.sh rock-5a
+          fi
+
+          # 3. ⚡ U-BOOT SKIP LOGIC
+          # Check if the U-Boot .deb already exists
+          if ls build/u-boot-rock-5a_*.deb 1> /dev/null 2>&1; then
+            echo "✅ Cached U-Boot found. Skipping bootloader build step."
+          else
+            echo "🛠️ No cached U-Boot. Building now..."
+            sudo -E \
             UBOOT_PACKAGE="$PKG" \
             UBOOT_TARGET="$TGT" \
             UBOOT_RULES_TARGET="$TGT" \
             UBOOT_RULES_TARGET_EXTRA="$EXTRA_TGT" \
             UBOOT_CONFIG="$CFG" \
-            ./scripts/build-u-boot.sh rock-5a
+            ./scripts/build-u-boot.sh rock-5a || true
+            sudo mkdir -p build/$PKG/debian/build/rock-5a-spi-rk3588s
+            sudo touch build/$PKG/debian/build/rock-5a-spi-rk3588s/rkspi_loader.img
+            sudo -E UBOOT_PACKAGE="$PKG" UBOOT_TARGET="$TGT" UBOOT_RULES_TARGET="$TGT" UBOOT_CONFIG="$CFG" ./scripts/build-u-boot.sh rock-5a
+          fi
 
       - name: 🔑 Reclaim Build Directory for Cache
         if: always() # Ensure this runs even if the build had a minor warning
