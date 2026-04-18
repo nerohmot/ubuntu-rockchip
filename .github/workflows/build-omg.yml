@@ -140,6 +140,30 @@ jobs:
             sudo -E UBOOT_PACKAGE="$PKG" UBOOT_TARGET="$TGT" UBOOT_RULES_TARGET="$TGT" UBOOT_CONFIG="$CFG" ./scripts/build-u-boot.sh rock-5a
           fi
 
+      - name: 🧐 Verify Build Artifacts (DTS & Packages)
+        if: always()
+        run: |
+          echo "------------------------------------------------"
+          echo "📂 SEARCHING FOR DEVICE TREE FILES (.dts / .dtb)"
+          echo "------------------------------------------------"
+          # Search specifically in arch/arm64/boot/dts/ where the real action is
+          # We use -iname to be case-insensitive
+          find . -type f \( -name "*.dts" -o -name "*.dtb" \) | grep "rockchip" | grep -v ".git" || echo "No Rockchip DTS/DTB files found."
+
+          echo ""
+          echo "------------------------------------------------"
+          echo "📦 SEARCHING FOR PRODUCED .DEB PACKAGES"
+          echo "------------------------------------------------"
+          # Find all .deb files in the build folder (where Job 2 needs them)
+          find build/ -maxdepth 2 -name "*.deb" || echo "❌ No .deb packages found in build directory!"
+
+          echo ""
+          echo "------------------------------------------------"
+          echo "📜 U-BOOT CRITICAL BINARIES"
+          echo "------------------------------------------------"
+          # Look for the actual bootloader files in the build tree
+          find build/ -name "u-boot.itb" -o -name "idbloader.img" -o -name "rkspi_loader.img"
+
       - name: 🔑 Reclaim Build Directory for Cache
         if: always() # Ensure this runs even if the build had a minor warning
         run: |
