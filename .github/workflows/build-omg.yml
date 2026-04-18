@@ -89,13 +89,6 @@ jobs:
             fi
           done
 
-          echo "------------------------------------------------"
-          echo "💉 Environment Variables:"
-          VARS=("UBOOT_PACKAGE" "UBOOT_TARGET" "UBOOT_CONFIG" "SUITE" "FLAVOR")
-          for var in "${VARS[@]}"; do
-            echo "   $var: '${!var:-NOT SET}'"
-          done
-
           if [ $MISSING -eq 1 ]; then
             echo "------------------------------------------------"
             echo "❌ FATAL: Environment incomplete."
@@ -112,6 +105,14 @@ jobs:
           export TGT="rock-5a-rk3588s"
           export CFG="rock-5a-rk3588_defconfig"
           export EXTRA_TGT="rock-5a-spi-rk3588s"
+
+          echo "------------------------------------------------"
+          echo "💉 Environment Variables:"
+          VARS=("UBOOT_PACKAGE" "UBOOT_TARGET" "UBOOT_CONFIG" "SUITE" "FLAVOR")
+          for var in "${VARS[@]}"; do
+            echo "   $var: '${!var:-NOT SET}'"
+          done
+          echo "------------------------------------------------"
 
           # 2. ⚡ KERNEL SKIP LOGIC
           # Check if the kernel .deb already exists in the restored cache
