@@ -22,7 +22,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            device-tree-compiler \
             bc \
             bison \
             build-essential \
@@ -44,6 +43,7 @@ jobs:
             python3-dev \
             qemu-user-static \
             rsync \
+            swig \
             udev \
             xz-utils
 
@@ -119,7 +119,7 @@ jobs:
             echo "✅ Cached Kernel found. Skipping kernel build step."
           else
             echo "🛠️ No cached kernel. Building now..."
-            sudo -E ./scripts/build-kernel.sh rock-5a
+            sudo -E SUITE="$SUITE" ./scripts/build-kernel.sh
           fi
 
           # 3. ⚡ U-BOOT SKIP LOGIC
@@ -186,7 +186,10 @@ jobs:
             dosfstools \
             debhelper \
             fakeroot \
-            gcc-aarch64-linux-gnu
+            gcc-aarch64-linux-gnu \
+            kmod \
+            rsync \
+            xz-utils
 
       - name: 🛡️ Sanitizer & Permissions
         run: |
@@ -220,7 +223,7 @@ jobs:
 
           # 3. 🔗 The Link: Satisfy the builder search
           echo "🔗 Linking NX5 IO U-Boot to OMG..."
-          sudo ln -sf build/u-boot-radxa-nx5-io_*.deb build/u-boot-omg_99.99_arm64.deb
+          (cd build && sudo ln -sf u-boot-radxa-nx5-io_*.deb u-boot-omg_99.99_arm64.deb)
           
           # 4. 🚀 THE MAIN EVENT: Use -E to pass variables into sudo
           echo "🚀 Starting main image build..."

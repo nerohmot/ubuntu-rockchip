@@ -1,12 +1,19 @@
-BOARD_NAME="Open Marine Gateway"
-BOARD_SINGLE="omg"
-SOA_ARCH="arm64"
-SOC="rk3588s"
-DTB="rockchip/rk3588s-radxa-nx5-io.dtb"
-U_BOOT_PACKAGE="u-boot-radxa-rk3588"
-U_BOOT_TARGET="radxa-nx5-io-rk3588s"
-U_BOOT_CONFIG="radxa-nx5-io-rk3588s_defconfig"
-KERNEL_CMDLINE="quiet splash vt.global_cursor_default=0"
-# cache_bust: Sat, Apr 18, 2026  9:37:56 AM
-# cache_bust: 1776504557
-# cache_bust: 1776506167
+# shellcheck shell=bash
+
+export BOARD_NAME="Open Marine Gateway"
+export BOARD_MAKER="nerohmot"
+export BOARD_SOC="Rockchip RK3588S"
+export BOARD_CPU="ARM Cortex A76 / A55"
+export UBOOT_PACKAGE="u-boot-radxa-rk3588"
+export UBOOT_RULES_TARGET="radxa-nx5-io-rk3588s"
+export COMPATIBLE_SUITES=("noble")
+export COMPATIBLE_FLAVORS=("server")
+
+function config_image_hook__omg() {
+    local rootfs="$1"
+    local overlay="$2"
+    local suite="$3"
+
+    return 0
+}
+# cache_bust: 1776509049
