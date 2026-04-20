@@ -146,7 +146,7 @@ if [[ ${LAUNCHPAD} == "Y" ]]; then
 else
     cp "${uboot_package}" ${chroot_dir}/tmp/
     chroot ${chroot_dir} dpkg -i "/tmp/${uboot_package}"
-    chroot ${chroot_dir} apt-mark hold "$(echo "${uboot_package}" | sed -rn 's/(.*)_[[:digit:]].*/\1/p')"
+    chroot ${chroot_dir} apt-mark hold "$(dpkg-deb --field "${uboot_package}" Package)"
 
     cp "${linux_image_package}" "${linux_headers_package}" "${linux_modules_package}" "${linux_buildinfo_package}" "${linux_rockchip_headers_package}" ${chroot_dir}/tmp/
     chroot ${chroot_dir} /bin/bash -c "apt-get -y purge \$(dpkg --list | grep -Ei 'linux-image|linux-headers|linux-modules|linux-rockchip' | awk '{ print \$2 }')"
