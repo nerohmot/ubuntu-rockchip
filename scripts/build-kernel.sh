@@ -27,6 +27,14 @@ fi
 cd linux-rockchip
 git checkout "${KERNEL_BRANCH}"
 
+# Inject OMG board device tree before building
+# The DTS lives in the ubuntu-rockchip repo root; build/ is two levels down.
+echo "Injecting rk3588s-omg.dts into kernel tree..."
+cp "../../dts/rk3588s-omg.dts" arch/arm64/boot/dts/rockchip/
+grep -qF "rk3588s-omg.dtb" arch/arm64/boot/dts/rockchip/Makefile || \
+    echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3588s-omg.dtb" >> arch/arm64/boot/dts/rockchip/Makefile
+echo "DTS injection complete."
+
 # shellcheck disable=SC2046
 export $(dpkg-architecture -aarm64)
 export CROSS_COMPILE=aarch64-linux-gnu-

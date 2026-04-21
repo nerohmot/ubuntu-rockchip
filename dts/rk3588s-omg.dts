@@ -1,0 +1,586 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Device Tree Source for the Open Marine Gateway (OMG) board.
+ * Based on the Radxa NX5 module (Rockchip RK3588S).
+ *
+ * Copyright (c) 2026 nerohmot
+ *
+ * TODO items (require final schematic sign-off):
+ *   - Confirm gmac0 RGMII TX/RX delay values against KSZ9897 board trace lengths
+ */
+
+/dts-v1/;
+
+#include "rk3588s-radxa-nx5-module.dtsi"
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/pinctrl/rockchip.h>
+#include <dt-bindings/input/input.h>
+
+/ {
+	model = "Open Marine Gateway";
+	compatible = "nerohmot,omg", "radxa,nx5-module", "rockchip,rk3588s";
+
+	aliases {
+		ethernet0 = &gmac0;   /* KSZ9897 uplink */
+		serial2   = &uart2;   /* debug console  */
+		serial3   = &uart3;   /* M.2 E-Key slot A – Heritage Card */
+		serial4   = &uart4;   /* M.2 E-Key slot B – VectorE Engine */
+	};
+
+	chosen {
+		stdout-path = "serial2:115200n8";
+	};
+
+	/* ------------------------------------------------------------------ */
+	/* Power supplies                                                       */
+	/* ------------------------------------------------------------------ */
+
+	vcc3v3_sys: vcc3v3-sys {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc3v3_sys";
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		vin-supply = <&vcc5v0_sys>;
+	};
+
+	vcc3v3_nvme: vcc3v3-nvme {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc3v3_nvme";
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		vin-supply = <&vcc5v0_sys>;
+	};
+
+	vcc3v3_wifi: vcc3v3-wifi {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc3v3_wifi";
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		vin-supply = <&vcc5v0_sys>;
+	};
+
+	vcc_cellular: vcc-cellular {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_cellular";
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		vin-supply = <&vcc5v0_sys>;
+	};
+
+	/* ------------------------------------------------------------------ */
+	/* Power-fail interrupt (RP2040 → NX5, GPIO0_B4, Pin 121)             */
+	/* Triggers systemd power-off target when DC input is lost.           */
+	/* ------------------------------------------------------------------ */
+
+	gpio-keys {
+		compatible = "gpio-keys";
+		pinctrl-names = "default";
+		pinctrl-0 = <&power_fail_int_pin>;
+
+		power-fail {
+			label = "Power Fail";
+			gpios = <&gpio0 RK_PB4 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_POWER>;
+			wakeup-source;
+			debounce-interval = <10>;
+		};
+	};
+
+	/* ------------------------------------------------------------------ */
+	/* Safe-to-cut output (NX5 → RP2040, GPIO0_B3, Pin 119)               */
+	/* Driven HIGH by userspace (systemd shutdown unit) when it is safe   */
+	/* for the RP2040 to kill the 5V_always rail.                         */
+	/* ------------------------------------------------------------------ */
+
+	safe-to-cut-hog {
+		compatible = "regulator-fixed";
+		regulator-name = "safe_to_cut";
+		gpio = <&gpio0 RK_PB3 GPIO_ACTIVE_HIGH>;
+		/* Default LOW (not safe). Userspace drives HIGH at shutdown. */
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+	};
+
+	/* ------------------------------------------------------------------ */
+	/* Display audio nodes                                                 */
+	/* ------------------------------------------------------------------ */
+
+	hdmi0_sound: hdmi0-sound {
+		status = "okay";
+		compatible = "rockchip,hdmi";
+		rockchip,mclk-fs = <128>;
+		rockchip,card-name = "rockchip-hdmi0";
+		rockchip,cpu = <&i2s5_8ch>;
+		rockchip,codec = <&hdmi0>;
+		rockchip,jack-det;
+	};
+
+	dp0_sound: dp0-sound {
+		status = "okay";
+		compatible = "rockchip,hdmi";
+		rockchip,mclk-fs = <512>;
+		rockchip,card-name = "rockchip-hdmi1";
+		rockchip,cpu = <&spdif_tx2>;
+		rockchip,codec = <&dp0 1>;
+		rockchip,jack-det;
+	};
+};
+
+/* ====================================================================== */
+/* NETWORKING: KSZ9897 7-port Gigabit Switch (DSA via I2C)                */
+/*                                                                         */
+/* Physical connection: NX5 gmac0 ←RGMII→ KSZ9897 port 6 (CPU port)     */
+/* Management:          I2C7, address 0x5F                                */
+/* ====================================================================== */
+
+/* gmac1 is defined in the module DTSI for an onboard PHY we don't use. */
+&gmac1 {
+	status = "disabled";
+};
+
+&gmac0 {
+	status = "okay";
+	phy-mode = "rgmii-id";
+	clock_in_out = "output";
+	pinctrl-names = "default";
+	pinctrl-0 = <&gmac0_miim
+	             &gmac0_tx_bus2
+	             &gmac0_rx_bus2
+	             &gmac0_rgmii_clk
+	             &gmac0_rgmii_bus>;
+	/*
+	 * TX/RX delays: tune against actual PCB trace lengths.
+	 * Starting values from KSZ9897 reference design; validate with
+	 * iperf3 + oscilloscope before finalising.
+	 */
+	tx_delay = <0x3c>;
+	rx_delay = <0x00>;	/* rgmii-id: RGMII_RXID mode, SoC adds RX delay */
+};
+
+/* ====================================================================== */
+/* I2C7 – Management bus (KSZ9897, USB2517 ×2, RP2040)                   */
+/* SCL: GPIO0_C3 / I2C7_SCL_M1 (SODIMM Pin 140)                          */
+/* SDA: GPIO0_C2 / I2C7_SDA_M1 (SODIMM Pin 142)                          */
+/* Pull-ups: 2.2 kΩ to 3.3V (on PCB)                                     */
+/* ====================================================================== */
+
+&i2c7 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c7m1_xfer>;
+	clock-frequency = <400000>;
+
+	/* Microchip KSZ9897 – 7-port Gigabit Switch, DSA                  */
+	ksz9897: ethernet-switch@5f {
+		compatible = "microchip,ksz9897";
+		reg = <0x5f>;
+
+		ethernet-ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				label = "lan1";
+				phy-mode = "internal";
+			};
+			port@1 {
+				reg = <1>;
+				label = "lan2";
+				phy-mode = "internal";
+			};
+			port@2 {
+				reg = <2>;
+				label = "lan3";
+				phy-mode = "internal";
+			};
+			port@3 {
+				reg = <3>;
+				label = "lan4";
+				phy-mode = "internal";
+			};
+			port@4 {
+				reg = <4>;
+				label = "lan5";
+				phy-mode = "internal";
+			};
+			port@5 {
+				reg = <5>;
+				label = "lan6";
+				phy-mode = "internal";
+			};
+			/* CPU port – RGMII uplink to NX5 gmac0 */
+			port@6 {
+				reg = <6>;
+				ethernet = <&gmac0>;
+				phy-mode = "rgmii-id";
+				fixed-link {
+					speed = <1000>;
+					full-duplex;
+					pause;
+				};
+			};
+		};
+	};
+
+	/* Microchip USB2517 – 7-port Industrial USB Hub #1 (cfg_sel0=GND) */
+	usb2517_1: usb-hub@2c {
+		compatible = "microchip,usb2517";
+		reg = <0x2c>;
+		reset-gpios = <&gpio3 RK_PC1 GPIO_ACTIVE_LOW>;
+	};
+
+	/* Microchip USB2517 – 7-port Industrial USB Hub #2 (cfg_sel0=3V3) */
+	usb2517_2: usb-hub@2d {
+		compatible = "microchip,usb2517";
+		reg = <0x2d>;
+		reset-gpios = <&gpio3 RK_PC2 GPIO_ACTIVE_LOW>;
+	};
+
+	/*
+	 * RP2040 PSU supervisor.
+	 * No upstream kernel driver; expose as a simple I2C device.
+	 * A userspace daemon (omg-psu-daemon) handles the SCPI protocol.
+	 */
+	rp2040_psu: psu@44 {
+		compatible = "nerohmot,omg-psu";
+		reg = <0x44>;
+	};
+};
+
+/* ====================================================================== */
+/* CAN / NMEA 2000 – TI ISO1050DUBR galvanically isolated transceiver     */
+/* CAN1_TX_M1 → GPIO1_A1 (SODIMM Pin 118)                                */
+/* CAN1_RX_M1 → GPIO1_A0 (SODIMM Pin 120)                                */
+/* Bus side (VCC2) powered by N2K network 5V; LEN = 1.                   */
+/* ====================================================================== */
+
+&can1 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&can1m1_pins>;
+	assigned-clocks = <&cru CLK_CAN1>;
+	assigned-clock-rates = <150000000>;
+};
+
+/* ====================================================================== */
+/* UART2 – Debug console & RP2040 log monitor                             */
+/* TX: GPIO0_B6 / UART2_TX_M0 (SODIMM Pin 123)                           */
+/* RX: GPIO0_B5 / UART2_RX_M0 (SODIMM Pin 125)                           */
+/* ====================================================================== */
+
+&uart2 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart2m0_xfer>;
+};
+
+/* ====================================================================== */
+/* UART3 – M.2 E-Key Slot A (Legacy Card – NMEA 0183 & SeaTalk1)          */
+/* 4 Mbps with RTS/CTS; clock re-parented to GPLL.                        */
+/* Mux M0: RX=GPIO1_PC0, TX=GPIO1_PC1, RTS=GPIO1_PC2, CTS=GPIO1_PC3.     */
+/* All four pins are in the GPIO1_PC bank — minimal PCB routing distance. */
+/* ====================================================================== */
+
+&uart3 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart3m0_xfer &uart3_ctsn &uart3_rtsn>;
+	uart-has-rtscts;
+	assigned-clocks = <&cru SCLK_UART3>;
+	assigned-clock-parents = <&cru PLL_GPLL>;
+	assigned-clock-rates = <480000000>;
+};
+
+/* ====================================================================== */
+/* UART4 – M.2 E-Key Slot B (VectorE Engine – GNSS, Motion & Environment) */
+/* 4 Mbps with RTS/CTS; clock re-parented to GPLL.                        */
+/* Mux M0: TX=GPIO1_PD2, RX=GPIO1_PD3, RTS=GPIO1_PC5, CTS=GPIO1_PC7.     */
+/* All four pins remain in GPIO1 bank — no cross-bank SODIMM routing.     */
+/* ====================================================================== */
+
+&uart4 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart4m0_xfer &uart4_ctsn &uart4_rtsn>;
+	uart-has-rtscts;
+	assigned-clocks = <&cru SCLK_UART4>;
+	assigned-clock-parents = <&cru PLL_GPLL>;
+	assigned-clock-rates = <480000000>;
+};
+
+/* ====================================================================== */
+/* PCIe – M.2 M-Key Slot (NVMe SSD, PCIe 2.1 x1)                        */
+/* PERST#: GPIO3_B7 → M.2 pin 22 (direct, no inverter needed).           */
+/* GPIO_ACTIVE_HIGH: kernel value 0 → GPIO LOW → PERST# asserted;        */
+/*                   kernel value 1 → GPIO HIGH → PERST# released.       */
+/* ====================================================================== */
+
+&combphy0_ps {
+	status = "okay";
+};
+
+&pcie2x1l0 {
+	status = "okay";
+	vpcie3v3-supply = <&vcc3v3_nvme>;
+	reset-gpios = <&gpio3 RK_PB7 GPIO_ACTIVE_HIGH>;
+};
+
+/* ====================================================================== */
+/* PCIe – M.2 E-Key Slot (WiFi/BT, PCIe 2.1 x1 + USB2 for Bluetooth)    */
+/* combphy2_psu provides PCIe SS for WiFi (Intel AX210).                  */
+/* u2phy1 / usbdrd3_1 provide USB2 for the AX210 Bluetooth interface.    */
+/* usbdp_phy0 is fully allocated to DisplayPort so OTG1 is USB2-only.    */
+/* PERST#: GPIO3_C0 → M.2 pin 22 (direct, no inverter — same convention  */
+/* as NX5 IO board which uses GPIO3_D1 for its PCIe WiFi reset).         */
+/* ====================================================================== */
+
+&combphy2_psu {
+	status = "okay";
+};
+
+&pcie2x1l2 {
+	status = "okay";
+	vpcie3v3-supply = <&vcc3v3_wifi>;
+	reset-gpios = <&gpio3 RK_PC0 GPIO_ACTIVE_HIGH>;
+};
+
+/* ====================================================================== */
+/* USB – M.2 B-Key Slot (4G/5G Cellular modem, USB 2.0 High-Speed)       */
+/*                                                                         */
+/* combphy0_ps is consumed by NVMe PCIe; usbdp_phy0 is consumed by DP.   */
+/* Therefore OTG0 has no SuperSpeed PHY and operates at USB 2.0 only     */
+/* (480 Mbps), which is sufficient for 4G LTE (~150 Mbps peak).          */
+/* ====================================================================== */
+
+&u2phy0 {
+	status = "okay";
+};
+
+&u2phy0_otg {
+	status = "okay";
+};
+
+&usbdrd3_0 {
+	status = "okay";
+};
+
+&usbdrd_dwc3_0 {
+	status = "okay";
+	dr_mode = "host";
+	maximum-speed = "high-speed"; /* no SS PHY available; combphy0_ps→PCIe, usbdp_phy0→DP */
+};
+
+/* ====================================================================== */
+/* USB – M.2 E-Key WiFi Bluetooth (USB 2.0 High-Speed via OTG1)           */
+/*                                                                         */
+/* usbdp_phy0 is fully in DisplayPort mode so OTG1 has no SS PHY.        */
+/* u2phy1 provides standalone USB2 for the AX210 Bluetooth function.     */
+/* ====================================================================== */
+
+&u2phy1 {
+	status = "okay";
+};
+
+&u2phy1_otg {
+	status = "okay";
+};
+
+&usbdrd3_1 {
+	status = "okay";
+};
+
+&usbdrd_dwc3_1 {
+	status = "okay";
+	dr_mode = "host";
+	maximum-speed = "high-speed"; /* no SS PHY available; usbdp_phy0→DP */
+};
+
+/* ====================================================================== */
+/* USB2 Host – feeds into USB2517 hub arrays                              */
+/* u2phy2 → Hub #1 upstream → Legacy M.2 (port 1) + 6× external         */
+/* u2phy3 → Hub #2 upstream → VectorE M.2 (port 1) + 6× external        */
+/* ====================================================================== */
+
+&u2phy2 {
+	status = "okay";
+};
+
+&u2phy2_host {
+	status = "okay";
+};
+
+&usb_host0_ehci {
+	status = "okay";
+};
+
+&usb_host0_ohci {
+	status = "okay";
+};
+
+&u2phy3 {
+	status = "okay";
+};
+
+&u2phy3_host {
+	status = "okay";
+};
+
+&usb_host1_ehci {
+	status = "okay";
+};
+
+&usb_host1_ohci {
+	status = "okay";
+};
+
+/* ====================================================================== */
+/* Display – Primary: HDMI 2.1 (Chart Table, up to 8K@60Hz)              */
+/* ====================================================================== */
+
+&hdmi0 {
+	status = "okay";
+	cec-enable = "true";
+};
+
+&hdmi0_in_vp0 {
+	status = "okay";
+};
+
+&route_hdmi0 {
+	status = "okay";
+};
+
+&hdptxphy_hdmi0 {
+	status = "okay";
+};
+
+&i2s5_8ch {
+	status = "okay";
+};
+
+/* ====================================================================== */
+/* Display – Secondary: DisplayPort 1.4 direct output (Cockpit)           */
+/*                                                                         */
+/* No onboard DP-to-HDMI bridge. Direct DP is used to support non-        */
+/* standard cockpit panels (e.g. 1920×480 bar displays) whose custom      */
+/* timings are incompatible with active bridge PLL tables. The display's  */
+/* full EDID is honoured by the RK3588S VOP2 scaler directly.             */
+/* If the cockpit screen is HDMI-only, use an external active DP→HDMI     */
+/* adapter/cable (preserves full timing flexibility, no onboard driver).  */
+/* ====================================================================== */
+
+&usbdp_phy0 {
+	status = "okay";
+	rockchip,dp-lane-mux = <0 1 2 3>;
+};
+
+&usbdp_phy0_dp {
+	status = "okay";
+};
+
+&dp0 {
+	status = "okay";
+};
+
+&dp0_in_vp2 {
+	status = "okay";
+};
+
+&route_dp0 {
+	status = "okay";
+	connect = <&vp2_out_dp0>;
+};
+
+&spdif_tx2 {
+	status = "okay";
+};
+
+/* ====================================================================== */
+/* VOP2 video output pipeline                                             */
+/* vp0 → HDMI0 (primary display)                                         */
+/* vp2 → DP0  (secondary display via bridge)                             */
+/* ====================================================================== */
+
+&vop {
+	status = "okay";
+};
+
+&vop_mmu {
+	status = "okay";
+};
+
+&vp0 {
+	rockchip,plane-mask = <(1 << ROCKCHIP_VOP2_CLUSTER0 |
+	                        1 << ROCKCHIP_VOP2_ESMART0)>;
+	rockchip,primary-plane = <ROCKCHIP_VOP2_CLUSTER0>;
+	cursor-win-id = <ROCKCHIP_VOP2_ESMART0>;
+};
+
+&vp2 {
+	rockchip,plane-mask = <(1 << ROCKCHIP_VOP2_CLUSTER2 |
+	                        1 << ROCKCHIP_VOP2_ESMART2)>;
+	rockchip,primary-plane = <ROCKCHIP_VOP2_CLUSTER2>;
+	cursor-win-id = <ROCKCHIP_VOP2_ESMART2>;
+};
+
+&display_subsystem {
+	clocks = <&hdptxphy_hdmi0>;
+	clock-names = "hdmi0_phy_pll";
+};
+
+/* ====================================================================== */
+/* eMMC (on NX5 module)                                                   */
+/* ====================================================================== */
+
+&sdhci {
+	status = "okay";
+};
+
+/* ====================================================================== */
+/* Pin control                                                             */
+/* ====================================================================== */
+
+&pinctrl {
+	omg-power {
+		/* GPIO0_B4 – Power_Fail_Interrupt input from RP2040 (Pin 121) */
+		power_fail_int_pin: power-fail-int-pin {
+			rockchip,pins = <0 RK_PB4 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+
+		/* GPIO0_B3 – Safe_To_Cut_Power output to RP2040 (Pin 119) */
+		safe_to_cut_pin: safe-to-cut-pin {
+			rockchip,pins = <0 RK_PB3 RK_FUNC_GPIO &pcfg_pull_down>;
+		};
+	};
+
+	omg-resets {
+		/* GPIO3_B7 – NVMe M-Key PERST# (direct to M.2 pin 22, no inverter) */
+		nvme_reset_pin: nvme-reset-pin {
+			rockchip,pins = <3 RK_PB7 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+
+		/* GPIO3_C0 – WiFi E-Key PERST# (direct to M.2 pin 22, no inverter) */
+		wifi_reset_pin: wifi-reset-pin {
+			rockchip,pins = <3 RK_PC0 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+
+		/* GPIO3_C1 – USB2517 Hub #1 RESET# (active-low) */
+		hub1_reset_pin: hub1-reset-pin {
+			rockchip,pins = <3 RK_PC1 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+
+		/* GPIO3_C2 – USB2517 Hub #2 RESET# (active-low) */
+		hub2_reset_pin: hub2-reset-pin {
+			rockchip,pins = <3 RK_PC2 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
+};

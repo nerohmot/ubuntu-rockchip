@@ -65,7 +65,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/
-          key: ${{ runner.os }}-omg-foundation-${{ hashFiles('config/boards/omg.sh', 'config/suites/noble.sh') }}
+          key: ${{ runner.os }}-omg-foundation-${{ hashFiles('config/boards/omg.sh', 'config/suites/noble.sh', 'dts/rk3588s-omg.dts') }}
 
       - name: 🔍 Verify Build Tools
         run: |
@@ -230,7 +230,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/
-          key: ${{ runner.os }}-omg-foundation-${{ hashFiles('config/boards/omg.sh', 'config/suites/noble.sh') }}
+          key: ${{ runner.os }}-omg-foundation-${{ hashFiles('config/boards/omg.sh', 'config/suites/noble.sh', 'dts/rk3588s-omg.dts') }}
 
       - name: 🚢 Build OMG Image
         run: |
