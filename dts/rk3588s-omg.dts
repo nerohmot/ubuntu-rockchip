@@ -6,12 +6,13 @@
  * Copyright (c) 2026 nerohmot
  *
  * TODO items (require final schematic sign-off):
- *   - Confirm gmac0 RGMII TX/RX delay values against KSZ9897 board trace lengths
+ *   - Measure KSZ9897 board trace lengths to tune gmac1 RGMII TX/RX delay values
  */
 
 /dts-v1/;
 
 #include "rk3588s-radxa-nx5-module.dtsi"
+#include <dt-bindings/display/rockchip_vop.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/pinctrl/rockchip.h>
 #include <dt-bindings/input/input.h>
@@ -21,10 +22,8 @@
 	compatible = "nerohmot,omg", "radxa,nx5-module", "rockchip,rk3588s";
 
 	aliases {
-		ethernet0 = &gmac0;   /* KSZ9897 uplink */
+		ethernet0 = &gmac1;   /* KSZ9897 uplink (only GMAC in RK3588S) */
 		serial2   = &uart2;   /* debug console  */
-		serial3   = &uart3;   /* M.2 E-Key slot A – Heritage Card */
-		serial4   = &uart4;   /* M.2 E-Key slot B – VectorE Engine */
 	};
 
 	chosen {
@@ -132,128 +131,147 @@
 		rockchip,codec = <&dp0 1>;
 		rockchip,jack-det;
 	};
+
+	/* ------------------------------------------------------------------ */
+	/* Management I2C – bit-bang                                          */
+	/* SCL: GPIO0_C3 (SODIMM Pin 140)   SDA: GPIO0_C2 (SODIMM Pin 142)  */
+	/* GPIO0_C3/C2 are general-purpose GPIO; not a hardware I2C7 mux.   */
+	/* Pull-ups: 2.2 kΩ to 3.3V on PCB.                                  */
+	/* ------------------------------------------------------------------ */
+	i2c_mgmt: i2c-mgmt {
+		compatible = "i2c-gpio";
+		sda-gpios = <&gpio0 RK_PC2 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+		scl-gpios = <&gpio0 RK_PC3 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+		i2c-gpio,delay-us = <5>;	/* ~100 kHz */
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		/* Microchip KSZ9897 – 7-port Gigabit Switch, DSA               */
+		ksz9897: ethernet-switch@5f {
+			compatible = "microchip,ksz9897";
+			reg = <0x5f>;
+
+			ethernet-ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+					label = "lan1";
+					phy-mode = "internal";
+				};
+				port@1 {
+					reg = <1>;
+					label = "lan2";
+					phy-mode = "internal";
+				};
+				port@2 {
+					reg = <2>;
+					label = "lan3";
+					phy-mode = "internal";
+				};
+				port@3 {
+					reg = <3>;
+					label = "lan4";
+					phy-mode = "internal";
+				};
+				port@4 {
+					reg = <4>;
+					label = "lan5";
+					phy-mode = "internal";
+				};
+				/*
+				 * KSZ9897 P6 (port@5) – MAC-only, no integrated PHY, left
+				 * unconnected on v1 hardware.  5 downlink ports (lan1-lan5)
+				 * are sufficient for the initial OMG design.
+				 * If a 6th RJ45 port is ever needed, wire P6 via RGMII to
+				 * an external PHY (e.g. TI DP83867IRPAP) and add:
+				 *
+				 *   port@5 {
+				 *       reg = <5>;
+				 *       label = "lan6";
+				 *       phy-handle = <&lan6_phy>;
+				 *       phy-mode = "rgmii-id";
+				 *   };
+				 *
+				 * plus a matching mdio { lan6_phy: ethernet-phy@N { … }; }
+				 * subnode inside ksz9897.
+				 */
+				/* CPU port – RGMII uplink to NX5 gmac1 */
+				port@6 {
+					reg = <6>;
+					ethernet = <&gmac1>;
+					phy-mode = "rgmii-id";
+					fixed-link {
+						speed = <1000>;
+						full-duplex;
+						pause;
+					};
+				};
+			};
+
+			};
+
+		/* Microchip USB2517 – 7-port Industrial USB Hub #1 (cfg_sel0=GND) */
+		usb2517_1: usb-hub@2c {
+			compatible = "microchip,usb2517";
+			reg = <0x2c>;
+			reset-gpios = <&gpio3 RK_PC1 GPIO_ACTIVE_LOW>;
+		};
+
+		/* Microchip USB2517 – 7-port Industrial USB Hub #2 (cfg_sel0=3V3) */
+		usb2517_2: usb-hub@2d {
+			compatible = "microchip,usb2517";
+			reg = <0x2d>;
+			reset-gpios = <&gpio3 RK_PC2 GPIO_ACTIVE_LOW>;
+		};
+
+		/*
+		 * RP2040 PSU supervisor.
+		 * No upstream kernel driver; expose as a simple I2C device.
+		 * A userspace daemon (omg-psu-daemon) handles the SCPI protocol.
+		 */
+		rp2040_psu: psu@44 {
+			compatible = "nerohmot,omg-psu";
+			reg = <0x44>;
+		};
+	};
 };
 
 /* ====================================================================== */
 /* NETWORKING: KSZ9897 7-port Gigabit Switch (DSA via I2C)                */
 /*                                                                         */
-/* Physical connection: NX5 gmac0 ←RGMII→ KSZ9897 port 6 (CPU port)     */
-/* Management:          I2C7, address 0x5F                                */
+/* Physical connection: NX5 gmac1 ←RGMII→ KSZ9897 port 6 (CPU port)     */
+/* Management:          bit-bang I2C (GPIO0_C3/C2), address 0x5F          */
+/*                                                                         */
+/* Note: RK3588S has only one GMAC (gmac1). The NX5 module DTSI configures*/
+/* gmac1 for an onboard RTL8211F PHY that is not populated on the OMG     */
+/* carrier board. We override that setup here to connect gmac1 RGMII to  */
+/* the KSZ9897 switch CPU port instead.                                   */
 /* ====================================================================== */
 
-/* gmac1 is defined in the module DTSI for an onboard PHY we don't use. */
 &gmac1 {
-	status = "disabled";
-};
-
-&gmac0 {
 	status = "okay";
 	phy-mode = "rgmii-id";
 	clock_in_out = "output";
 	pinctrl-names = "default";
-	pinctrl-0 = <&gmac0_miim
-	             &gmac0_tx_bus2
-	             &gmac0_rx_bus2
-	             &gmac0_rgmii_clk
-	             &gmac0_rgmii_bus>;
+	pinctrl-0 = <&gmac1_miim
+	             &gmac1_tx_bus2
+	             &gmac1_rx_bus2
+	             &gmac1_rgmii_clk
+	             &gmac1_rgmii_bus>;
+	/* Remove onboard PHY properties added by the module DTSI */
+	/delete-property/ phy-handle;
+	/delete-property/ snps,reset-gpio;
+	/delete-property/ snps,reset-active-low;
+	/delete-property/ snps,reset-delays-us;
 	/*
 	 * TX/RX delays: tune against actual PCB trace lengths.
 	 * Starting values from KSZ9897 reference design; validate with
 	 * iperf3 + oscilloscope before finalising.
 	 */
-	tx_delay = <0x3c>;
-	rx_delay = <0x00>;	/* rgmii-id: RGMII_RXID mode, SoC adds RX delay */
-};
-
-/* ====================================================================== */
-/* I2C7 – Management bus (KSZ9897, USB2517 ×2, RP2040)                   */
-/* SCL: GPIO0_C3 / I2C7_SCL_M1 (SODIMM Pin 140)                          */
-/* SDA: GPIO0_C2 / I2C7_SDA_M1 (SODIMM Pin 142)                          */
-/* Pull-ups: 2.2 kΩ to 3.3V (on PCB)                                     */
-/* ====================================================================== */
-
-&i2c7 {
-	status = "okay";
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c7m1_xfer>;
-	clock-frequency = <400000>;
-
-	/* Microchip KSZ9897 – 7-port Gigabit Switch, DSA                  */
-	ksz9897: ethernet-switch@5f {
-		compatible = "microchip,ksz9897";
-		reg = <0x5f>;
-
-		ethernet-ports {
-			#address-cells = <1>;
-			#size-cells = <0>;
-
-			port@0 {
-				reg = <0>;
-				label = "lan1";
-				phy-mode = "internal";
-			};
-			port@1 {
-				reg = <1>;
-				label = "lan2";
-				phy-mode = "internal";
-			};
-			port@2 {
-				reg = <2>;
-				label = "lan3";
-				phy-mode = "internal";
-			};
-			port@3 {
-				reg = <3>;
-				label = "lan4";
-				phy-mode = "internal";
-			};
-			port@4 {
-				reg = <4>;
-				label = "lan5";
-				phy-mode = "internal";
-			};
-			port@5 {
-				reg = <5>;
-				label = "lan6";
-				phy-mode = "internal";
-			};
-			/* CPU port – RGMII uplink to NX5 gmac0 */
-			port@6 {
-				reg = <6>;
-				ethernet = <&gmac0>;
-				phy-mode = "rgmii-id";
-				fixed-link {
-					speed = <1000>;
-					full-duplex;
-					pause;
-				};
-			};
-		};
-	};
-
-	/* Microchip USB2517 – 7-port Industrial USB Hub #1 (cfg_sel0=GND) */
-	usb2517_1: usb-hub@2c {
-		compatible = "microchip,usb2517";
-		reg = <0x2c>;
-		reset-gpios = <&gpio3 RK_PC1 GPIO_ACTIVE_LOW>;
-	};
-
-	/* Microchip USB2517 – 7-port Industrial USB Hub #2 (cfg_sel0=3V3) */
-	usb2517_2: usb-hub@2d {
-		compatible = "microchip,usb2517";
-		reg = <0x2d>;
-		reset-gpios = <&gpio3 RK_PC2 GPIO_ACTIVE_LOW>;
-	};
-
-	/*
-	 * RP2040 PSU supervisor.
-	 * No upstream kernel driver; expose as a simple I2C device.
-	 * A userspace daemon (omg-psu-daemon) handles the SCPI protocol.
-	 */
-	rp2040_psu: psu@44 {
-		compatible = "nerohmot,omg-psu";
-		reg = <0x44>;
-	};
+	tx-delay = <0x3c>;
+	rx-delay = <0x00>;	/* rgmii-id: SoC adds both TX and RX delay */
 };
 
 /* ====================================================================== */
@@ -281,40 +299,6 @@
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart2m0_xfer>;
-};
-
-/* ====================================================================== */
-/* UART3 – M.2 E-Key Slot A (Legacy Card – NMEA 0183 & SeaTalk1)          */
-/* 4 Mbps with RTS/CTS; clock re-parented to GPLL.                        */
-/* Mux M0: RX=GPIO1_PC0, TX=GPIO1_PC1, RTS=GPIO1_PC2, CTS=GPIO1_PC3.     */
-/* All four pins are in the GPIO1_PC bank — minimal PCB routing distance. */
-/* ====================================================================== */
-
-&uart3 {
-	status = "okay";
-	pinctrl-names = "default";
-	pinctrl-0 = <&uart3m0_xfer &uart3_ctsn &uart3_rtsn>;
-	uart-has-rtscts;
-	assigned-clocks = <&cru SCLK_UART3>;
-	assigned-clock-parents = <&cru PLL_GPLL>;
-	assigned-clock-rates = <480000000>;
-};
-
-/* ====================================================================== */
-/* UART4 – M.2 E-Key Slot B (VectorE Engine – GNSS, Motion & Environment) */
-/* 4 Mbps with RTS/CTS; clock re-parented to GPLL.                        */
-/* Mux M0: TX=GPIO1_PD2, RX=GPIO1_PD3, RTS=GPIO1_PC5, CTS=GPIO1_PC7.     */
-/* All four pins remain in GPIO1 bank — no cross-bank SODIMM routing.     */
-/* ====================================================================== */
-
-&uart4 {
-	status = "okay";
-	pinctrl-names = "default";
-	pinctrl-0 = <&uart4m0_xfer &uart4_ctsn &uart4_rtsn>;
-	uart-has-rtscts;
-	assigned-clocks = <&cru SCLK_UART4>;
-	assigned-clock-parents = <&cru PLL_GPLL>;
-	assigned-clock-rates = <480000000>;
 };
 
 /* ====================================================================== */
