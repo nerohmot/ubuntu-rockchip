@@ -7,6 +7,7 @@
  *
  * TODO items (require final schematic sign-off):
  *   - Measure KSZ9897 board trace lengths to tune gmac1 RGMII TX/RX delay values
+ *   - Confirm vcc_cellular PCB rail feeds B-Key M.2 slot power pins correctly
  */
 
 /dts-v1/;
@@ -23,7 +24,8 @@
 
 	aliases {
 		ethernet0 = &gmac1;   /* KSZ9897 uplink (only GMAC in RK3588S) */
-		serial2   = &uart2;   /* debug console  */
+		serial2   = &uart2;   /* debug console                          */
+		serial9   = &uart9;   /* Legacy M.2 B-Key modem                 */
 	};
 
 	chosen {
@@ -72,17 +74,20 @@
 		regulator-min-microvolt = <5000000>;
 		regulator-max-microvolt = <5000000>;
 		vin-supply = <&vcc5v0_sys>;
+		/* PCB-level always-on rail feeding B-Key M.2 slot power pins.    */
+		/* Not software-switchable; no DTS consumer node required.        */
 	};
 
 	/* ------------------------------------------------------------------ */
-	/* Power-fail interrupt (RP2040 → NX5, GPIO0_B4, Pin 121)             */
-	/* Triggers systemd power-off target when DC input is lost.           */
+	/* GPIO inputs: Power-fail interrupt & Legacy M.2 card detect         */
+	/* Power-fail (GPIO0_B4): RP2040 → NX5, triggers systemd power-off.  */
+	/* Card-detect (GPIO3_D0): W_DISABLE# pulled HIGH; card GND = LOW.   */
 	/* ------------------------------------------------------------------ */
 
 	gpio-keys {
 		compatible = "gpio-keys";
 		pinctrl-names = "default";
-		pinctrl-0 = <&power_fail_int_pin>;
+		pinctrl-0 = <&power_fail_int_pin &safe_to_cut_pin &legacy_m2_det_pin>;
 
 		power-fail {
 			label = "Power Fail";
@@ -91,22 +96,24 @@
 			wakeup-source;
 			debounce-interval = <10>;
 		};
+
+		/* GPIO3_D0 pulled HIGH on PCB; card GND shorts it LOW when inserted */
+		legacy-m2-detect {
+			label = "Legacy M.2 Card Detect";
+			gpios = <&gpio3 RK_PD0 GPIO_ACTIVE_LOW>;
+			linux,code = <0x290>;   /* OEM vendor range; no upstream conflict */
+			debounce-interval = <100>;
+		};
 	};
 
 	/* ------------------------------------------------------------------ */
 	/* Safe-to-cut output (NX5 → RP2040, GPIO0_B3, Pin 119)               */
-	/* Driven HIGH by userspace (systemd shutdown unit) when it is safe   */
-	/* for the RP2040 to kill the 5V_always rail.                         */
+	/* Pinctrl pull-down holds pin LOW at boot (not safe to cut power).   */
+	/* A systemd shutdown unit drives it HIGH via libgpiod (gpioset)      */
+	/* to signal the RP2040 that it may safely kill the 5V_always rail.   */
+	/* GPIO is left unclaimed by the kernel; accessible to userspace via  */
+	/* /dev/gpiochip0, line GPIO0_B3.                                     */
 	/* ------------------------------------------------------------------ */
-
-	safe-to-cut-hog {
-		compatible = "regulator-fixed";
-		regulator-name = "safe_to_cut";
-		gpio = <&gpio0 RK_PB3 GPIO_ACTIVE_HIGH>;
-		/* Default LOW (not safe). Userspace drives HIGH at shutdown. */
-		regulator-min-microvolt = <3300000>;
-		regulator-max-microvolt = <3300000>;
-	};
 
 	/* ------------------------------------------------------------------ */
 	/* Display audio nodes                                                 */
@@ -216,6 +223,8 @@
 		usb2517_1: usb-hub@2c {
 			compatible = "microchip,usb2517";
 			reg = <0x2c>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&hub1_reset_pin>;
 			reset-gpios = <&gpio3 RK_PC1 GPIO_ACTIVE_LOW>;
 		};
 
@@ -223,6 +232,8 @@
 		usb2517_2: usb-hub@2d {
 			compatible = "microchip,usb2517";
 			reg = <0x2d>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&hub2_reset_pin>;
 			reset-gpios = <&gpio3 RK_PC2 GPIO_ACTIVE_LOW>;
 		};
 
@@ -290,15 +301,33 @@
 };
 
 /* ====================================================================== */
-/* UART2 – Debug console & RP2040 log monitor                             */
+/* UART2 – Debug console (3-pin header: GND/TX/RX)                       */
 /* TX: GPIO0_B6 / UART2_TX_M0 (SODIMM Pin 123)                           */
 /* RX: GPIO0_B5 / UART2_RX_M0 (SODIMM Pin 125)                           */
+/* This is the RK3588S mask-ROM / early-boot UART; kernel console only.  */
 /* ====================================================================== */
 
 &uart2 {
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart2m0_xfer>;
+};
+
+/* ====================================================================== */
+/* UART9 – Legacy M.2 B-Key modem (4-wire TX/RX/RTS/CTS)                */
+/* TX:  GPIO3_D2 / UART9_TX_M2   (SODIMM Pin 203)                        */
+/* RX:  GPIO3_D1 / UART9_RX_M2   (SODIMM Pin 205)                        */
+/* RTS: GPIO3_D3 / UART9_RTSN_M2 (SODIMM Pin 207)                        */
+/* CTS: GPIO3_C7 / UART9_CTSN_M2 (SODIMM Pin 209)                        */
+/* Hardware flow control for reliable AT-command modem comms.            */
+/* Note: UART6_M1/UART7_M1 are internal to the NX5 (not on SODIMM).     */
+/* RP2040 is managed via I2C only (address 0x44 on mgmt bus).            */
+/* ====================================================================== */
+
+&uart9 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart9m2_xfer &uart9m2_ctsn &uart9m2_rtsn>;
 };
 
 /* ====================================================================== */
@@ -312,8 +341,10 @@
 	status = "okay";
 };
 
-&pcie2x1l0 {
+&pcie2x1l1 {
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&nvme_reset_pin>;
 	vpcie3v3-supply = <&vcc3v3_nvme>;
 	reset-gpios = <&gpio3 RK_PB7 GPIO_ACTIVE_HIGH>;
 };
@@ -321,8 +352,9 @@
 /* ====================================================================== */
 /* PCIe – M.2 E-Key Slot (WiFi/BT, PCIe 2.1 x1 + USB2 for Bluetooth)    */
 /* combphy2_psu provides PCIe SS for WiFi (Intel AX210).                  */
-/* u2phy1 / usbdrd3_1 provide USB2 for the AX210 Bluetooth interface.    */
-/* usbdp_phy0 is fully allocated to DisplayPort so OTG1 is USB2-only.    */
+/* AX210 Bluetooth USB2 lines are wired to a downstream port of USB2517   */
+/* Hub #1 (u2phy2); the port previously used by the Legacy M.2 slot is   */
+/* freed since that slot is now UART-only.                                */
 /* PERST#: GPIO3_C0 → M.2 pin 22 (direct, no inverter — same convention  */
 /* as NX5 IO board which uses GPIO3_D1 for its PCIe WiFi reset).         */
 /* ====================================================================== */
@@ -333,6 +365,8 @@
 
 &pcie2x1l2 {
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&wifi_reset_pin>;
 	vpcie3v3-supply = <&vcc3v3_wifi>;
 	reset-gpios = <&gpio3 RK_PC0 GPIO_ACTIVE_HIGH>;
 };
@@ -364,33 +398,9 @@
 };
 
 /* ====================================================================== */
-/* USB – M.2 E-Key WiFi Bluetooth (USB 2.0 High-Speed via OTG1)           */
-/*                                                                         */
-/* usbdp_phy0 is fully in DisplayPort mode so OTG1 has no SS PHY.        */
-/* u2phy1 provides standalone USB2 for the AX210 Bluetooth function.     */
-/* ====================================================================== */
-
-&u2phy1 {
-	status = "okay";
-};
-
-&u2phy1_otg {
-	status = "okay";
-};
-
-&usbdrd3_1 {
-	status = "okay";
-};
-
-&usbdrd_dwc3_1 {
-	status = "okay";
-	dr_mode = "host";
-	maximum-speed = "high-speed"; /* no SS PHY available; usbdp_phy0→DP */
-};
-
-/* ====================================================================== */
 /* USB2 Host – feeds into USB2517 hub arrays                              */
-/* u2phy2 → Hub #1 upstream → Legacy M.2 (port 1) + 6× external         */
+/* u2phy2 → Hub #1 upstream → AX210 BT (port 1) + 6× external           */
+/*           (Legacy M.2 slot is UART-only; its hub port freed for BT)   */
 /* u2phy3 → Hub #2 upstream → VectorE M.2 (port 1) + 6× external        */
 /* ====================================================================== */
 
@@ -565,6 +575,13 @@
 		/* GPIO3_C2 – USB2517 Hub #2 RESET# (active-low) */
 		hub2_reset_pin: hub2-reset-pin {
 			rockchip,pins = <3 RK_PC2 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
+
+	omg-legacy-m2 {
+		/* GPIO3_D0 – Legacy M.2 B-Key card detect (W_DISABLE#, 100kΩ pull-up on PCB) */
+		legacy_m2_det_pin: legacy-m2-det-pin {
+			rockchip,pins = <3 RK_PD0 RK_FUNC_GPIO &pcfg_pull_up>;
 		};
 	};
 };
